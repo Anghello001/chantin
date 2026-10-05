@@ -1,16 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Trophy, 
-  BookCheck,
-  ThumbsUp,
-  ThumbsDown,
-  Users,
-  CheckCircle2,
-  AlertTriangle,
-  HelpCircle,
-  Gavel,
-  Clock,
-  Sparkles
+  ThumbsUp, 
+  ThumbsDown, 
+  Users, 
+  Gavel, 
+  Clock 
 } from 'lucide-react';
 import { RoomData, Player, Category } from '../types/game';
 import { soundFx } from '../utils/audio';
@@ -30,6 +25,7 @@ export const ReviewScreen: React.FC<Props> = ({
   room,
   currentPlayerId,
   onCastVote,
+  onApproveReviews,
   onSendShout,
 }) => {
   const categories = room.settings.categories;
@@ -37,9 +33,41 @@ export const ReviewScreen: React.FC<Props> = ({
   const currentLetter = room.currentLetter;
   const peerVotes = room.peerVotes || {};
 
-  const reviewRemaining = room.reviewTimerRemaining ?? 20;
-  const reviewTotal = room.reviewTimerTotal ?? 20;
-  const progressPercent = Math.max(0, Math.min(100, (reviewRemaining / reviewTotal) * 100));
+  const totalTime = room.reviewTimerTotal || 20;
+  const [secondsRemaining, setSecondsRemaining] = useState<number>(() => room.reviewTimerRemaining ?? totalTime);
+  const autoProceedRef = useRef<boolean>(false);
+
+  // Sync if server pushes a timer tick
+  useEffect(() => {
+    if (typeof room.reviewTimerRemaining === 'number') {
+      setSecondsRemaining(room.reviewTimerRemaining);
+    }
+  }, [room.reviewTimerRemaining]);
+
+  // Guaranteed active local countdown timer that decrements every 1000ms
+  useEffect(() => {
+    autoProceedRef.current = false;
+    const interval = setInterval(() => {
+      setSecondsRemaining((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          if (!autoProceedRef.current) {
+            autoProceedRef.current = true;
+            if (onApproveReviews) {
+              onApproveReviews();
+            }
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [onApproveReviews]);
+
+  const progressPercent = Math.max(0, Math.min(100, (secondsRemaining / totalTime) * 100));
+  const isUrgent = secondsRemaining <= 5;
 
   const handleVote = (targetPlayerId: string, categoryId: string, voteType: 'up' | 'down') => {
     soundFx.playTick();
@@ -96,25 +124,23 @@ export const ReviewScreen: React.FC<Props> = ({
     }
   }
 
-  const isUrgent = reviewRemaining <= 5;
-
   return (
     <div className="w-full max-w-md mx-auto px-4 py-4 flex flex-col gap-4 pb-20">
       {/* Dynamic Review Countdown Banner */}
       <div className={`p-4 rounded-3xl border shadow-xl transition-all ${
         isUrgent 
-          ? 'bg-rose-950/80 border-rose-500/80 animate-pulse' 
+          ? 'bg-rose-950/80 border-rose-500/80' 
           : 'bg-neutral-900/90 border-neutral-800'
       }`}>
         <div className="flex items-center justify-between gap-3 mb-2">
           <div className="flex items-center gap-2">
-            <Clock className={`w-5 h-5 ${isUrgent ? 'text-rose-400' : 'text-amber-400 animate-spin-slow'}`} />
+            <Clock className={`w-5 h-5 ${isUrgent ? 'text-rose-400 animate-pulse' : 'text-amber-400'}`} />
             <div>
               <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 block">
                 Tiempo de Votación
               </span>
-              <span className={`text-base font-black font-outfit ${isUrgent ? 'text-rose-300' : 'text-white'}`}>
-                {reviewRemaining}s restantes
+              <span className={`text-lg font-black font-outfit ${isUrgent ? 'text-rose-300' : 'text-white'}`}>
+                {secondsRemaining}s restantes
               </span>
             </div>
           </div>
@@ -129,9 +155,9 @@ export const ReviewScreen: React.FC<Props> = ({
         </div>
 
         {/* Animated Progress Bar */}
-        <div className="w-full h-2 bg-neutral-950 rounded-full overflow-hidden border border-neutral-800">
+        <div className="w-full h-2.5 bg-neutral-950 rounded-full overflow-hidden border border-neutral-800">
           <div 
-            className={`h-full transition-all duration-1000 rounded-full ${
+            className={`h-full transition-all duration-1000 ease-linear rounded-full ${
               isUrgent ? 'bg-rose-500' : 'bg-gradient-to-r from-amber-500 to-emerald-400'
             }`}
             style={{ width: `${progressPercent}%` }}
@@ -139,7 +165,7 @@ export const ReviewScreen: React.FC<Props> = ({
         </div>
 
         <p className="text-[11px] text-neutral-400 text-center mt-2 font-medium">
-          ⚖️ Vota las palabras en duda con <strong className="text-emerald-400">👍 Aceptar</strong> o <strong className="text-rose-400">👎 Rechazar</strong>. La ronda continuará automáticamente.
+          ⚖️ Vota las palabras en duda con <strong className="text-emerald-400">👍 Aceptar</strong> o <strong className="text-rose-400">👎 Rechazar</strong>. La ronda continuará automáticamente al llegar a 0s.
         </p>
       </div>
 
@@ -163,7 +189,7 @@ export const ReviewScreen: React.FC<Props> = ({
         </div>
       )}
 
-      {/* TRIBUNAL DE PALABRAS EN DUDA */}
+      {/* TRIBUNAL DE PALABRAS EN DUDA (Like / Dislike) */}
       {pendingOrUnregisteredWords.length > 0 && (
         <div className="bg-neutral-900 border-2 border-amber-500/40 rounded-3xl p-4 space-y-3 shadow-lg">
           <div className="flex items-center justify-between">
@@ -226,13 +252,13 @@ export const ReviewScreen: React.FC<Props> = ({
                     </div>
                   </div>
 
-                  {/* Voting Action Buttons */}
+                  {/* Voting Action Buttons (Like 👍 / Dislike 👎) */}
                   <div className="flex items-center justify-between pt-2 mt-2 border-t border-neutral-800/80">
                     <div className="text-[11px] text-neutral-400 flex items-center gap-1.5 font-bold">
                       <Users className="w-3 h-3 text-neutral-500" />
-                      <span>{voteEntry.upvotes.length} 👍</span>
+                      <span className="text-emerald-400">{voteEntry.upvotes.length} 👍</span>
                       <span>•</span>
-                      <span>{voteEntry.downvotes.length} 👎</span>
+                      <span className="text-rose-400">{voteEntry.downvotes.length} 👎</span>
                     </div>
 
                     <div className="flex items-center gap-1.5">
@@ -344,8 +370,6 @@ export const ReviewScreen: React.FC<Props> = ({
 
                   const isNonEmpty = Boolean(answer && answer.trim());
                   const pts = scoreDetail.points || 0;
-                  const voteKey = `${player.id}_${cat.id}`;
-                  const voteEntry = peerVotes[voteKey] || { upvotes: [], downvotes: [] };
 
                   return (
                     <div

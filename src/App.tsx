@@ -152,6 +152,9 @@ export default function App() {
     socketClient.on('receive_reaction', (msg: ChatMessage) => {
       setActiveShouts((prev) => [...prev, msg]);
       soundFx.playTick();
+      setTimeout(() => {
+        setActiveShouts((prev) => prev.filter((m) => m.id !== msg.id));
+      }, 1400);
     });
 
     socketClient.on('receive_chat_message', (msg: ChatMessage) => {
@@ -455,7 +458,7 @@ export default function App() {
   const handleSendShout = (text: string, type: string) => {
     if (isSoloPractice) {
       const msg: ChatMessage = {
-        id: `shout-${Date.now()}`,
+        id: `shout-${Date.now()}-${Math.random()}`,
         senderId: playerId,
         senderName: room?.players[playerId]?.nickname || 'Tú',
         senderAvatar: room?.players[playerId]?.avatar || '🦙',
@@ -466,6 +469,9 @@ export default function App() {
       };
       setActiveShouts((prev) => [...prev, msg]);
       soundFx.playTick();
+      setTimeout(() => {
+        setActiveShouts((prev) => prev.filter((m) => m.id !== msg.id));
+      }, 1400);
       return;
     }
 
