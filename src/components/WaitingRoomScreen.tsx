@@ -9,11 +9,13 @@ import {
   MessageSquare, 
   Send,
   ArrowLeft,
-  Share2
+  Share2,
+  QrCode
 } from 'lucide-react';
 import { RoomData, Player, GameSettings, GameMode } from '../types/game';
 import { ALL_PRESET_MODES } from '../constants/gameCategories';
 import { QuickShoutBar } from './QuickShoutBar';
+import { QRModal } from './QRModal';
 
 interface Props {
   room: RoomData;
@@ -35,6 +37,7 @@ export const WaitingRoomScreen: React.FC<Props> = ({
   onLeaveRoom,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [showSettingsEdit, setShowSettingsEdit] = useState(false);
 
@@ -69,7 +72,16 @@ export const WaitingRoomScreen: React.FC<Props> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setIsQrModalOpen(true)}
+            className="px-2.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-bold flex items-center gap-1.5 transition border border-amber-500/40"
+            title="Mostrar Código QR"
+          >
+            <QrCode className="w-4 h-4 text-amber-400" />
+            <span className="hidden sm:inline">QR</span>
+          </button>
+
           <button
             onClick={handleCopyLink}
             className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-semibold flex items-center gap-1.5 transition border border-neutral-700"
@@ -328,6 +340,13 @@ export const WaitingRoomScreen: React.FC<Props> = ({
           </div>
         )}
       </div>
+
+      {/* QR Code Modal for Room */}
+      <QRModal
+        isOpen={isQrModalOpen}
+        onClose={() => setIsQrModalOpen(false)}
+        roomCode={room.code}
+      />
     </div>
   );
 };

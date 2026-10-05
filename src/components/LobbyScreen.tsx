@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Play, 
   LogIn, 
@@ -12,10 +12,13 @@ import {
   ChevronUp,
   Wifi,
   WifiOff,
-  Server
+  Server,
+  QrCode,
+  Camera
 } from 'lucide-react';
 import { AVATAR_OPTIONS, ALL_PRESET_MODES } from '../constants/gameCategories';
 import { GameMode, GameSettings } from '../types/game';
+import { QRScannerModal } from './QRScannerModal';
 
 interface Props {
   onCreateRoom: (nickname: string, avatar: string, settings: Partial<GameSettings>) => void;
@@ -52,8 +55,16 @@ export const LobbyScreen: React.FC<Props> = ({
   const [votingDuration, setVotingDuration] = useState<number>(20);
   const [totalRounds, setTotalRounds] = useState<number>(5);
   const [showConfig, setShowConfig] = useState(false);
-  const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'join'>(() => initialRoomCode ? 'join' : 'create');
   const [joinError, setJoinError] = useState('');
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+
+  useEffect(() => {
+    if (initialRoomCode) {
+      setRoomCodeInput(initialRoomCode.toUpperCase());
+      setActiveTab('join');
+    }
+  }, [initialRoomCode]);
 
   const handleRandomName = () => {
     const random = RANDOM_NICKNAMES[Math.floor(Math.random() * RANDOM_NICKNAMES.length)];
@@ -80,8 +91,8 @@ export const LobbyScreen: React.FC<Props> = ({
     });
   };
 
-  const handleJoin = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleJoin = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setJoinError('');
     if (!nickname.trim()) {
       setJoinError('Escribe tu nombre');
@@ -93,6 +104,18 @@ export const LobbyScreen: React.FC<Props> = ({
     }
     saveProfile(nickname, avatar);
     onJoinRoom(roomCodeInput.trim().toUpperCase(), nickname.trim(), avatar);
+  };
+
+  const handleQrScanned = (scannedCode: string) => {
+    const code = scannedCode.trim().toUpperCase();
+    setRoomCodeInput(code);
+    setIsScannerOpen(false);
+    setJoinError('');
+    
+    // Auto join immediately
+    const nickToUse = nickname.trim() || RANDOM_NICKNAMES[0];
+    saveProfile(nickToUse, avatar);
+    onJoinRoom(code, nickToUse, avatar);
   };
 
   const handlePractice = () => {
@@ -387,6 +410,24 @@ export const LobbyScreen: React.FC<Props> = ({
       {/* JOIN TAB */}
       {activeTab === 'join' && (
         <form onSubmit={handleJoin} className="space-y-3">
+          {/* Quick QR Scanner Action Button */}
+          <button
+            type="button"
+            onClick={() => setIsScannerOpen(true)}
+            className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500/20 via-neutral-900 to-amber-500/20 hover:from-amber-500/30 hover:to-amber-500/30 border-2 border-amber-500/50 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2.5 transition shadow-lg active:scale-[0.99]"
+          >
+            <Camera className="w-4 h-4 text-amber-400" />
+            <span className="font-outfit font-black text-amber-300">Escanear Código QR con Cámara</span>
+          </button>
+
+          <div className="relative flex items-center py-1">
+            <div className="flex-grow border-t border-neutral-800" />
+            <span className="flex-shrink mx-3 text-[10px] uppercase font-bold text-neutral-500">
+              o escribe el código
+            </span>
+            <div className="flex-grow border-t border-neutral-800" />
+          </div>
+
           <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 space-y-3">
             <label className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider block">
               Código de Sala (4 Letras)
@@ -428,6 +469,13 @@ export const LobbyScreen: React.FC<Props> = ({
           <span>Practicar en Modo Solitario</span>
         </button>
       </div>
+
+      {/* Camera QR Scanner Modal */}
+      <QRScannerModal
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onScanSuccess={handleQrScanned}
+      />
     </div>
   );
 };
