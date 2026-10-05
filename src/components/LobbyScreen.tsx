@@ -9,7 +9,10 @@ import {
   Shuffle, 
   BookCheck,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Wifi,
+  WifiOff,
+  Server
 } from 'lucide-react';
 import { AVATAR_OPTIONS, ALL_PRESET_MODES } from '../constants/gameCategories';
 import { GameMode, GameSettings } from '../types/game';
@@ -19,6 +22,8 @@ interface Props {
   onJoinRoom: (roomCode: string, nickname: string, avatar: string) => void;
   onStartSoloPractice: (nickname: string, avatar: string, mode: GameMode) => void;
   initialRoomCode?: string;
+  isConnected?: boolean;
+  onOpenServerConfig?: () => void;
 }
 
 const RANDOM_NICKNAMES = [
@@ -31,6 +36,8 @@ export const LobbyScreen: React.FC<Props> = ({
   onJoinRoom,
   onStartSoloPractice,
   initialRoomCode = '',
+  isConnected = true,
+  onOpenServerConfig,
 }) => {
   const [nickname, setNickname] = useState(() => {
     return localStorage.getItem('chantin_nick') || RANDOM_NICKNAMES[Math.floor(Math.random() * RANDOM_NICKNAMES.length)];
@@ -92,23 +99,48 @@ export const LobbyScreen: React.FC<Props> = ({
   };
 
   return (
-    <div className="w-full max-w-md mx-auto px-4 py-5 flex flex-col gap-4">
+    <div className="w-full max-w-md mx-auto px-4 py-4 flex flex-col gap-3.5">
       {/* Hero Badge */}
-      <div className="text-center pt-2">
+      <div className="text-center pt-1">
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-900 border border-neutral-800 text-[11px] font-semibold text-neutral-300 mb-2">
           <BookCheck className="w-3.5 h-3.5 text-amber-400" />
-          <span>Diccionario RAE en RAM integrado</span>
+          <span>Diccionario en RAM + Filtro de Votos</span>
         </div>
         <h1 className="text-3xl font-black font-outfit tracking-tight text-white">
           CHANTIN<span className="text-amber-400">CHANTÓN</span>
         </h1>
         <p className="text-xs text-neutral-400 mt-0.5">
-          El clásico Stop / Basta ecuatoriano en tiempo real
+          El clásico Stop / Basta ecuatoriano multijugador
         </p>
       </div>
 
+      {/* Disconnect warning banner if Render backend is sleeping or URL is missing */}
+      {!isConnected && (
+        <div 
+          onClick={onOpenServerConfig}
+          className="bg-rose-950/70 border border-rose-600/60 rounded-2xl p-3 flex items-center justify-between gap-2 cursor-pointer hover:bg-rose-900/60 transition shadow-lg"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-rose-900/80 text-rose-300 flex items-center justify-center shrink-0 animate-pulse">
+              <WifiOff className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <span className="text-xs font-bold text-rose-200 block font-outfit">
+                Servidor Backend Desconectado
+              </span>
+              <span className="text-[10px] text-rose-300/90 block truncate">
+                Toca aquí para vincular tu servidor de Render o esperar que despierte
+              </span>
+            </div>
+          </div>
+          <span className="text-[10px] font-bold text-amber-300 px-2 py-1 bg-neutral-950/80 rounded-lg shrink-0 border border-amber-500/30">
+            Ajustar
+          </span>
+        </div>
+      )}
+
       {/* Profile Box */}
-      <div className="bg-neutral-900/90 border border-neutral-800/90 rounded-2xl p-4 shadow-sm space-y-3">
+      <div className="bg-neutral-900/90 border border-neutral-800/90 rounded-2xl p-3.5 shadow-sm space-y-2.5">
         <div className="flex items-center justify-between">
           <label className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">
             Tu Jugador
@@ -130,7 +162,7 @@ export const LobbyScreen: React.FC<Props> = ({
             onChange={(e) => setNickname(e.target.value)}
             maxLength={20}
             placeholder="Tu apodo..."
-            className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3.5 py-2.5 text-white font-bold text-sm focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/20"
+            className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3.5 py-2 text-white font-bold text-sm focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/20"
           />
           <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xl">
             {avatar}
@@ -138,32 +170,37 @@ export const LobbyScreen: React.FC<Props> = ({
         </div>
 
         {/* Avatar Bar (horizontal scrollable) */}
-        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          {AVATAR_OPTIONS.map((av) => (
-            <button
-              key={av}
-              type="button"
-              onClick={() => setAvatar(av)}
-              className={`w-9 h-9 shrink-0 text-lg rounded-xl flex items-center justify-center transition ${
-                avatar === av
-                  ? 'bg-amber-500 text-neutral-950 shadow-sm'
-                  : 'bg-neutral-950 border border-neutral-800 text-neutral-300'
-              }`}
-            >
-              {av}
-            </button>
-          ))}
+        <div>
+          <span className="text-[10px] text-neutral-400 block mb-1 font-medium">
+            Elige tu avatar:
+          </span>
+          <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+            {AVATAR_OPTIONS.map((av) => (
+              <button
+                key={av}
+                type="button"
+                onClick={() => setAvatar(av)}
+                className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0 transition ${
+                  avatar === av
+                    ? 'bg-amber-500/20 border-2 border-amber-400 scale-105'
+                    : 'bg-neutral-950 border border-neutral-800 hover:border-neutral-700'
+                }`}
+              >
+                {av}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Main Tab Selector (Crear / Unirse) */}
-      <div className="bg-neutral-900 border border-neutral-800 p-1 rounded-2xl flex">
+      {/* Tab Switcher */}
+      <div className="grid grid-cols-2 bg-neutral-900 border border-neutral-800 rounded-2xl p-1 gap-1">
         <button
           type="button"
           onClick={() => setActiveTab('create')}
-          className={`flex-1 py-2.5 rounded-xl text-xs font-bold font-outfit uppercase tracking-wider transition ${
+          className={`py-2 rounded-xl text-xs font-bold font-outfit uppercase tracking-wider transition ${
             activeTab === 'create'
-              ? 'bg-neutral-800 text-white shadow-sm'
+              ? 'bg-amber-500 text-neutral-950 shadow-md font-black'
               : 'text-neutral-400 hover:text-white'
           }`}
         >
@@ -172,9 +209,9 @@ export const LobbyScreen: React.FC<Props> = ({
         <button
           type="button"
           onClick={() => setActiveTab('join')}
-          className={`flex-1 py-2.5 rounded-xl text-xs font-bold font-outfit uppercase tracking-wider transition ${
+          className={`py-2 rounded-xl text-xs font-bold font-outfit uppercase tracking-wider transition ${
             activeTab === 'join'
-              ? 'bg-neutral-800 text-white shadow-sm'
+              ? 'bg-amber-500 text-neutral-950 shadow-md font-black'
               : 'text-neutral-400 hover:text-white'
           }`}
         >
@@ -182,24 +219,30 @@ export const LobbyScreen: React.FC<Props> = ({
         </button>
       </div>
 
-      {/* CREATE ROOM VIEW */}
+      {/* CREATE TAB */}
       {activeTab === 'create' && (
-        <div className="space-y-3 animate-in fade-in duration-150">
-          {/* Game Modes (Compact Vertical Cards) */}
+        <form onSubmit={handleCreate} className="space-y-3">
+          {/* Game Modes selector */}
           <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider block px-1">
-              Modo de Juego
-            </label>
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">
+                Modo de Juego
+              </span>
+              <span className="text-[10px] text-amber-400 font-semibold">
+                {ALL_PRESET_MODES[selectedMode].categories.length} categorías
+              </span>
+            </div>
 
-            {(['classic', 'crazy', 'irl_objects', 'ecuador'] as GameMode[]).map((m) => {
+            {(['classic', 'ecuador', 'crazy', 'irl_objects'] as GameMode[]).map((m) => {
               const info = ALL_PRESET_MODES[m];
               const isSelected = selectedMode === m;
+
               return (
                 <button
                   key={m}
                   type="button"
                   onClick={() => setSelectedMode(m)}
-                  className={`w-full p-3 rounded-2xl border text-left flex items-center justify-between gap-3 transition ${
+                  className={`w-full p-2.5 rounded-2xl border text-left flex items-center justify-between gap-3 transition ${
                     isSelected
                       ? 'bg-neutral-900 border-amber-500/80 ring-1 ring-amber-500/30'
                       : 'bg-neutral-950 border-neutral-800/80 hover:bg-neutral-900/50'
@@ -208,10 +251,10 @@ export const LobbyScreen: React.FC<Props> = ({
                   <div className="flex items-center gap-2.5 min-w-0">
                     <span className="text-xl shrink-0">{info.icon}</span>
                     <div className="min-w-0">
-                      <div className="font-bold text-sm text-white font-outfit truncate">
+                      <div className="font-bold text-xs text-white font-outfit truncate">
                         {info.title}
                       </div>
-                      <div className="text-[11px] text-neutral-400 truncate">
+                      <div className="text-[10px] text-neutral-400 truncate">
                         {info.subtitle}
                       </div>
                     </div>
@@ -258,18 +301,18 @@ export const LobbyScreen: React.FC<Props> = ({
                     Segundos por ronda:
                   </span>
                   <div className="flex gap-1.5">
-                    {[30, 45, 60, 90].map((s) => (
+                    {[45, 60, 90, 120].map((sec) => (
                       <button
-                        key={s}
+                        key={sec}
                         type="button"
-                        onClick={() => setRoundDuration(s)}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${
-                          roundDuration === s
+                        onClick={() => setRoundDuration(sec)}
+                        className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition ${
+                          roundDuration === sec
                             ? 'bg-amber-500 text-neutral-950'
-                            : 'bg-neutral-950 border border-neutral-800 text-neutral-400'
+                            : 'bg-neutral-950 border border-neutral-800 text-neutral-300'
                         }`}
                       >
-                        {s}s
+                        {sec}s
                       </button>
                     ))}
                   </div>
@@ -277,18 +320,18 @@ export const LobbyScreen: React.FC<Props> = ({
 
                 <div>
                   <span className="block text-[11px] text-neutral-400 mb-1 font-medium">
-                    Número de rondas:
+                    Total de rondas:
                   </span>
                   <div className="flex gap-1.5">
-                    {[3, 5, 7, 10].map((r) => (
+                    {[3, 5, 8, 10].map((r) => (
                       <button
                         key={r}
                         type="button"
                         onClick={() => setTotalRounds(r)}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${
+                        className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition ${
                           totalRounds === r
                             ? 'bg-amber-500 text-neutral-950'
-                            : 'bg-neutral-950 border border-neutral-800 text-neutral-400'
+                            : 'bg-neutral-950 border border-neutral-800 text-neutral-300'
                         }`}
                       >
                         {r}
@@ -300,41 +343,43 @@ export const LobbyScreen: React.FC<Props> = ({
             )}
           </div>
 
-          {/* Primary Create Button */}
+          {/* Action Button: Create Private Room */}
           <button
-            type="button"
-            onClick={handleCreate}
-            className="w-full py-3.5 px-4 rounded-2xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-black font-outfit text-base uppercase tracking-wider transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-sm"
+            type="submit"
+            className="w-full py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-400 active:scale-[0.98] text-neutral-950 font-black font-outfit text-sm uppercase tracking-wider transition shadow-lg flex items-center justify-center gap-2"
           >
-            <Play className="w-4 h-4 fill-current" />
+            <Sparkles className="w-4 h-4 fill-current" />
             <span>Crear Sala Privada</span>
           </button>
-        </div>
+        </form>
       )}
 
-      {/* JOIN ROOM VIEW */}
+      {/* JOIN TAB */}
       {activeTab === 'join' && (
-        <form onSubmit={handleJoin} className="space-y-3 animate-in fade-in duration-150">
-          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 text-center space-y-2">
-            <span className="text-xs text-neutral-400 block">
-              Ingresa el código de 4 letras de la sala:
-            </span>
+        <form onSubmit={handleJoin} className="space-y-3">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 space-y-3">
+            <label className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider block">
+              Código de Sala (4 Letras)
+            </label>
             <input
               type="text"
               value={roomCodeInput}
               onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
               maxLength={4}
-              placeholder="ABCD"
-              className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-center text-3xl font-black tracking-widest text-amber-400 font-outfit uppercase focus:outline-none focus:border-amber-400"
+              placeholder="Ej: ABCD"
+              className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-center text-2xl font-black font-outfit text-amber-400 tracking-widest uppercase focus:outline-none focus:border-amber-400"
             />
+
             {joinError && (
-              <p className="text-xs text-rose-400 font-semibold">{joinError}</p>
+              <p className="text-xs text-rose-400 font-semibold text-center">
+                {joinError}
+              </p>
             )}
           </div>
 
           <button
             type="submit"
-            className="w-full py-3.5 px-4 rounded-2xl bg-neutral-800 hover:bg-neutral-700 text-white font-bold font-outfit text-base uppercase tracking-wider transition active:scale-[0.99] flex items-center justify-center gap-2 border border-neutral-700"
+            className="w-full py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-400 active:scale-[0.98] text-neutral-950 font-black font-outfit text-sm uppercase tracking-wider transition shadow-lg flex items-center justify-center gap-2"
           >
             <LogIn className="w-4 h-4" />
             <span>Entrar a la Sala</span>
@@ -342,15 +387,15 @@ export const LobbyScreen: React.FC<Props> = ({
         </form>
       )}
 
-      {/* Practice Solo Button */}
+      {/* SOLO PRACTICE BUTTON */}
       <div className="pt-1">
         <button
           type="button"
           onClick={handlePractice}
-          className="w-full py-2.5 px-4 rounded-xl bg-neutral-900/60 hover:bg-neutral-900 text-neutral-400 hover:text-neutral-200 border border-neutral-800/80 text-xs font-semibold transition flex items-center justify-center gap-1.5"
+          className="w-full py-3 rounded-2xl bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 text-neutral-300 font-bold text-xs uppercase tracking-wider transition flex items-center justify-center gap-2"
         >
-          <Gamepad2 className="w-3.5 h-3.5 text-amber-400" />
-          <span>Modo Práctica Solo (Offline)</span>
+          <Gamepad2 className="w-4 h-4 text-amber-400" />
+          <span>Practicar en Modo Solitario</span>
         </button>
       </div>
     </div>

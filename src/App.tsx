@@ -19,11 +19,23 @@ import { ReviewScreen } from './components/ReviewScreen';
 import { RoundResultsScreen } from './components/RoundResultsScreen';
 import { GameOverScreen } from './components/GameOverScreen';
 import { ShoutToastOverlay } from './components/ShoutToast';
+import { ServerConfigModal } from './components/ServerConfigModal';
 import { soundFx } from './utils/audio';
 import { calculateAutomaticScores } from './utils/scoreCalculator';
 
 export default function App() {
+  const [backendUrl, setBackendUrl] = useState<string>(() => {
+    return (
+      import.meta.env.VITE_BACKEND_URL ||
+      import.meta.env.VITE_SOCKET_URL ||
+      localStorage.getItem('chantin_backend_url') ||
+      ''
+    );
+  });
+
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [isConnected, setIsConnected] = useState<boolean>(false);
+  const [isServerConfigOpen, setIsServerConfigOpen] = useState<boolean>(false);
   const [room, setRoom] = useState<RoomData | null>(null);
   const [playerId, setPlayerId] = useState<string>('');
   const [isMuted, setIsMuted] = useState<boolean>(false);
@@ -36,23 +48,36 @@ export default function App() {
   const soloTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize Socket connection
-  useEffect(() => {
-    // Check URL params for room code (e.g. ?room=ABCD)
-    const params = new URLSearchParams(window.location.search);
-    const roomFromUrl = params.get('room');
-    if (roomFromUrl) {
-      setInitialUrlRoomCode(roomFromUrl.toUpperCase());
+  const initSocket = (targetUrl: string) => {
+    if (socket) {
+      socket.disconnect();
     }
 
-    const socketClient = io({
-      transports: ['websocket', 'polling'],
-      reconnectionAttempts: 10,
-    });
+    const socketClient = targetUrl 
+      ? io(targetUrl, {
+          transports: ['websocket', 'polling'],
+          reconnectionAttempts: 15,
+          timeout: 10000,
+        })
+      : io({
+          transports: ['websocket', 'polling'],
+          reconnectionAttempts: 15,
+          timeout: 10000,
+        });
 
     setSocket(socketClient);
 
     socketClient.on('connect', () => {
+      setIsConnected(true);
       setPlayerId(socketClient.id || '');
+    });
+
+    socketClient.on('disconnect', () => {
+      setIsConnected(false);
+    });
+
+    socketClient.on('connect_error', () => {
+      setIsConnected(false);
     });
 
     socketClient.on('room_created', ({ roomCode, room: newRoom }) => {
@@ -121,30 +146,55 @@ export default function App() {
         if (!prev) return prev;
         return {
           ...prev,
-          chatMessages: [...prev.chatMessages, msg],
+          chatMessages: [...(prev.chatMessages || []), msg],
         };
       });
     });
+  };
+
+  useEffect(() => {
+    // Check URL params for room code (e.g. ?room=ABCD)
+    const params = new URLSearchParams(window.location.search);
+    const roomFromUrl = params.get('room');
+    if (roomFromUrl) {
+      setInitialUrlRoomCode(roomFromUrl.toUpperCase());
+    }
+
+    initSocket(backendUrl);
 
     return () => {
-      socketClient.disconnect();
+      if (socket) socket.disconnect();
     };
   }, []);
 
-  const handleToggleMute = () => {
-    const next = !isMuted;
-    setIsMuted(next);
-    soundFx.setMuted(next);
+  const handleSaveBackendUrl = (newUrl: string) => {
+    localStorage.setItem('chantin_backend_url', newUrl);
+    setBackendUrl(newUrl);
+    initSocket(newUrl);
   };
 
-  // Socket action dispatchers
-  const handleCreateRoom = (nickname: string, avatar: string, settings: Partial<GameSettings>) => {
-    if (!socket) return;
+  const handleReconnect = () => {
+    initSocket(backendUrl);
+  };
+
+  // Socket Actions
+  const handleCreateRoom = (
+    nickname: string, 
+    avatar: string, 
+    settings: Partial<GameSettings>
+  ) => {
+    if (!socket || !socket.connected) {
+      setIsServerConfigOpen(true);
+      return;
+    }
     socket.emit('create_room', { nickname, avatar, settings });
   };
 
   const handleJoinRoom = (roomCode: string, nickname: string, avatar: string) => {
-    if (!socket) return;
+    if (!socket || !socket.connected) {
+      setIsServerConfigOpen(true);
+      return;
+    }
     socket.emit('join_room', { roomCode, nickname, avatar });
   };
 
@@ -156,6 +206,7 @@ export default function App() {
       });
       return;
     }
+
     if (!socket || !room) return;
     socket.emit('update_settings', { roomCode: room.code, settings });
   };
@@ -165,6 +216,7 @@ export default function App() {
       startSoloRound();
       return;
     }
+
     if (!socket || !room) return;
     socket.emit('start_round', { roomCode: room.code });
   };
@@ -183,6 +235,7 @@ export default function App() {
       });
       return;
     }
+
     if (!socket || !room) return;
     socket.emit('sync_player_answers', { roomCode: room.code, answers });
   };
@@ -192,6 +245,7 @@ export default function App() {
       freezeSoloGame(answers);
       return;
     }
+
     if (!socket || !room) return;
     socket.emit('chantinchanton', { roomCode: room.code, answers });
   };
@@ -258,27 +312,28 @@ export default function App() {
     if (isSoloPractice && room) {
       const targetPlayer = room.players[targetPlayerId];
       if (!targetPlayer) return;
-      const updatedDetails = {
-        ...targetPlayer.roundScoreDetails,
-        [categoryId]: {
-          points,
-          status: status as 'valid_unique' | 'valid_repeated' | 'invalid' | 'bonus' | 'custom',
-          verified: true,
-          notes,
-        },
-      };
+
       setRoom({
         ...room,
         players: {
           ...room.players,
           [targetPlayerId]: {
             ...targetPlayer,
-            roundScoreDetails: updatedDetails,
+            roundScoreDetails: {
+              ...(targetPlayer.roundScoreDetails || {}),
+              [categoryId]: {
+                points: Number(points) || 0,
+                status: status as any,
+                verified: true,
+                notes,
+              },
+            },
           },
         },
       });
       return;
     }
+
     if (!socket || !room) return;
     socket.emit('update_review_points', {
       roomCode: room.code,
@@ -292,18 +347,55 @@ export default function App() {
 
   const handleApproveReviews = () => {
     if (isSoloPractice && room) {
-      approveSoloReviews();
+      const player = room.players[playerId];
+      let roundTotal = 0;
+      for (const d of Object.values(player?.roundScoreDetails || {})) {
+        roundTotal += d.points || 0;
+      }
+
+      const newScore = (player?.score || 0) + roundTotal;
+      const roundAnswers = { [playerId]: { ...(player?.currentRoundAnswers || {}) } };
+      const roundScores = { [playerId]: roundTotal };
+
+      setRoom({
+        ...room,
+        state: 'round_results',
+        players: {
+          ...room.players,
+          [playerId]: {
+            ...player,
+            score: newScore,
+            totalRoundPoints: roundTotal,
+          },
+        },
+        roundHistory: [
+          ...room.roundHistory,
+          {
+            round: room.currentRound,
+            letter: room.currentLetter,
+            answers: roundAnswers,
+            scores: roundScores,
+            screamedBy: room.stoppedByPlayer?.nickname,
+          },
+        ],
+      });
       return;
     }
+
     if (!socket || !room) return;
     socket.emit('approve_all_reviews', { roomCode: room.code });
   };
 
   const handleNextRound = () => {
     if (isSoloPractice && room) {
-      startSoloRound();
+      if (room.currentRound >= room.settings.totalRounds) {
+        setRoom({ ...room, state: 'game_over' });
+      } else {
+        startSoloRound();
+      }
       return;
     }
+
     if (!socket || !room) return;
     socket.emit('next_round', { roomCode: room.code });
   };
@@ -313,6 +405,7 @@ export default function App() {
       setRoom({ ...room, state: 'game_over' });
       return;
     }
+
     if (!socket || !room) return;
     socket.emit('finish_game', { roomCode: room.code });
   };
@@ -326,6 +419,8 @@ export default function App() {
         currentLetter: '',
         usedLetters: [],
         roundHistory: [],
+        peerVotes: {},
+        stoppedByPlayer: undefined,
         players: {
           [playerId]: {
             ...room.players[playerId],
@@ -333,55 +428,99 @@ export default function App() {
             totalRoundPoints: 0,
             currentRoundAnswers: {},
             roundScoreDetails: {},
+            screamedChantin: false,
           },
         },
       });
       return;
     }
+
     if (!socket || !room) return;
     socket.emit('restart_game', { roomCode: room.code });
   };
 
   const handleSendShout = (text: string, type: string) => {
-    const currentNick = room?.players[playerId]?.nickname || 'Jugador';
-    const currentAvatar = room?.players[playerId]?.avatar || '📢';
-    const shoutMsg: ChatMessage = {
-      id: `shout-${Date.now()}`,
-      senderId: playerId || 'solo',
-      senderName: currentNick,
-      senderAvatar: currentAvatar,
-      text,
-      isShout: true,
-      timestamp: Date.now(),
-    };
-    setActiveShouts((prev) => [...prev, shoutMsg]);
-    soundFx.playTick();
-
-    if (!isSoloPractice && socket && room) {
-      socket.emit('send_reaction', { roomCode: room.code, shoutType: type, text });
+    if (isSoloPractice) {
+      const msg: ChatMessage = {
+        id: `shout-${Date.now()}`,
+        senderId: playerId,
+        senderName: room?.players[playerId]?.nickname || 'Tú',
+        senderAvatar: room?.players[playerId]?.avatar || '🦙',
+        text,
+        isShout: true,
+        shoutType: type as any,
+        timestamp: Date.now(),
+      };
+      setActiveShouts((prev) => [...prev, msg]);
+      soundFx.playTick();
+      return;
     }
+
+    if (!socket || !room) return;
+    socket.emit('send_reaction', {
+      roomCode: room.code,
+      shoutType: type,
+      text,
+    });
   };
 
-  const handleSendChat = (text: string) => {
-    if (!socket || !room || isSoloPractice) return;
-    socket.emit('send_chat_message', { roomCode: room.code, text });
+  const handleSendChatMessage = (text: string) => {
+    if (isSoloPractice && room) {
+      const msg: ChatMessage = {
+        id: `msg-${Date.now()}`,
+        senderId: playerId,
+        senderName: room.players[playerId]?.nickname || 'Tú',
+        senderAvatar: room.players[playerId]?.avatar || '🦙',
+        text,
+        timestamp: Date.now(),
+      };
+      setRoom({
+        ...room,
+        chatMessages: [...room.chatMessages, msg],
+      });
+      return;
+    }
+
+    if (!socket || !room) return;
+    socket.emit('send_chat_message', {
+      roomCode: room.code,
+      text,
+    });
   };
 
   const handleLeaveRoom = () => {
-    if (soloTimerRef.current) {
-      clearInterval(soloTimerRef.current);
-    }
-    setRoom(null);
+    if (soloTimerRef.current) clearInterval(soloTimerRef.current);
     setIsSoloPractice(false);
+    setRoom(null);
+    if (socket && room && !isSoloPractice) {
+      socket.disconnect();
+      initSocket(backendUrl);
+    }
   };
 
-  // Solo Practice Mode Handlers
+  // Solo Practice Local Logic
   const handleStartSoloPractice = (nickname: string, avatar: string, mode: GameMode) => {
-    const soloId = 'solo-player';
+    const soloId = 'solo-player-1';
     setPlayerId(soloId);
     setIsSoloPractice(true);
 
-    const soloRoom: RoomData = {
+    const soloPlayer: Player = {
+      id: soloId,
+      nickname: nickname || 'Modo Solitario',
+      avatar: avatar || '🦙',
+      score: 0,
+      totalRoundPoints: 0,
+      isHost: true,
+      isReady: true,
+      currentRoundAnswers: {},
+      roundScoreDetails: {},
+      screamedChantin: false,
+      connected: true,
+    };
+
+    const preset = ALL_PRESET_MODES[mode] || ALL_PRESET_MODES.classic;
+
+    const initialRoom: RoomData = {
       code: 'SOLO',
       hostId: soloId,
       state: 'lobby',
@@ -391,89 +530,93 @@ export default function App() {
       settings: {
         roundDuration: 60,
         gameMode: mode,
-        totalRounds: 3,
-        categories: ALL_PRESET_MODES[mode].categories,
+        totalRounds: 5,
+        categories: [...preset.categories],
         autoScoreAssistant: true,
         gracePeriodSeconds: 3,
       },
-      players: {
-        [soloId]: {
-          id: soloId,
-          nickname,
-          avatar,
-          score: 0,
-          totalRoundPoints: 0,
-          isHost: true,
-          isReady: true,
-          currentRoundAnswers: {},
-          roundScoreDetails: {},
-          screamedChantin: false,
-          connected: true,
-        },
-      },
+      players: { [soloId]: soloPlayer },
       peerVotes: {},
       timerRemaining: 60,
       timerTotal: 60,
       roundHistory: [],
       chatMessages: [
         {
-          id: 'solo-welcome',
+          id: 'msg-solo-1',
           senderId: 'system',
           senderName: 'Sistema',
           senderAvatar: '🎯',
-          text: 'Modo Práctica Activado. ¡Entrena tu velocidad!',
+          text: '¡Modo Práctica Solitario! Completa las casillas y grita ¡Chantinchantón!',
           timestamp: Date.now(),
         },
       ],
       createdAt: Date.now(),
     };
 
-    setRoom(soloRoom);
+    setRoom(initialRoom);
   };
 
   const startSoloRound = () => {
     if (!room) return;
-    const available = ALPHABET.filter((l) => !room.usedLetters.includes(l));
-    const chosenLetter = available.length > 0 ? available[Math.floor(Math.random() * available.length)] : 'C';
+    if (soloTimerRef.current) clearInterval(soloTimerRef.current);
 
-    const nextRoundNumber = room.currentRound + 1;
-    const roundDuration = room.settings.roundDuration;
+    const availableLetters = ALPHABET.filter((l) => !room.usedLetters.includes(l));
+    const nextLetter =
+      availableLetters.length > 0
+        ? availableLetters[Math.floor(Math.random() * availableLetters.length)]
+        : ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
 
-    setRoom({
-      ...room,
-      state: 'countdown',
-      currentRound: nextRoundNumber,
-      currentLetter: chosenLetter,
-      usedLetters: [...room.usedLetters, chosenLetter],
-      timerRemaining: roundDuration,
-      timerTotal: roundDuration,
-      stoppedByPlayer: undefined,
-      players: {
-        [playerId]: {
-          ...room.players[playerId],
-          currentRoundAnswers: {},
-          roundScoreDetails: {},
-          screamedChantin: false,
+    const updatedUsed = [...room.usedLetters, nextLetter];
+
+    setRoom((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        state: 'countdown',
+        currentRound: prev.currentRound + 1,
+        currentLetter: nextLetter,
+        usedLetters: updatedUsed,
+        stoppedByPlayer: undefined,
+        peerVotes: {},
+        timerRemaining: prev.settings.roundDuration,
+        timerTotal: prev.settings.roundDuration,
+        players: {
+          [playerId]: {
+            ...prev.players[playerId],
+            currentRoundAnswers: {},
+            roundScoreDetails: {},
+            screamedChantin: false,
+            totalRoundPoints: 0,
+          },
         },
-      },
+      };
     });
 
     setTimeout(() => {
-      setRoom((prev) => (prev ? { ...prev, state: 'playing' } : null));
+      setRoom((prev) => {
+        if (!prev) return prev;
+        return { ...prev, state: 'playing' };
+      });
 
-      if (soloTimerRef.current) clearInterval(soloTimerRef.current);
       soloTimerRef.current = setInterval(() => {
         setRoom((prev) => {
-          if (!prev || prev.state !== 'playing') return prev;
-          if (prev.timerRemaining <= 1) {
+          if (!prev || prev.state !== 'playing') {
             if (soloTimerRef.current) clearInterval(soloTimerRef.current);
-            freezeSoloGame(prev.players[playerId]?.currentRoundAnswers || {});
-            return { ...prev, timerRemaining: 0 };
+            return prev;
           }
-          return { ...prev, timerRemaining: prev.timerRemaining - 1 };
+
+          if (prev.timerRemaining > 0) {
+            const nextRemaining = prev.timerRemaining - 1;
+            if (nextRemaining <= 0) {
+              if (soloTimerRef.current) clearInterval(soloTimerRef.current);
+              freezeSoloGame(prev.players[playerId]?.currentRoundAnswers || {});
+            }
+            return { ...prev, timerRemaining: nextRemaining };
+          }
+          return prev;
         });
       }, 1000);
-    }, 2800);
+    }, 3200);
   };
 
   const freezeSoloGame = (answers: Record<string, string>) => {
@@ -534,103 +677,65 @@ export default function App() {
     }, 3000);
   };
 
-  const approveSoloReviews = () => {
-    setRoom((prev) => {
-      if (!prev) return prev;
-      const player = prev.players[playerId];
-      let roundTotal = 0;
-      for (const d of Object.values(player.roundScoreDetails || {})) {
-        roundTotal += d.points || 0;
-      }
-
-      const updatedScore = player.score + roundTotal;
-      const updatedPlayer: Player = {
-        ...player,
-        score: updatedScore,
-        totalRoundPoints: roundTotal,
-      };
-
-      const historyItem = {
-        round: prev.currentRound,
-        letter: prev.currentLetter,
-        answers: { [playerId]: { ...player.currentRoundAnswers } },
-        scores: { [playerId]: roundTotal },
-        screamedBy: prev.stoppedByPlayer?.nickname,
-      };
-
-      return {
-        ...prev,
-        state: 'round_results',
-        roundHistory: [...prev.roundHistory, historyItem],
-        players: {
-          ...prev.players,
-          [playerId]: updatedPlayer,
-        },
-      };
-    });
-  };
-
-  const playersCount = room ? Object.keys(room.players).length : undefined;
-
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col font-sans selection:bg-amber-400 selection:text-neutral-950">
-      {/* Top Navigation */}
+      {/* Toast Shouts Overlay */}
+      <ShoutToastOverlay messages={activeShouts} />
+
+      {/* Global Header */}
       <Header
         roomCode={room?.code}
         isMuted={isMuted}
-        onToggleMute={handleToggleMute}
+        onToggleMute={() => {
+          const next = !isMuted;
+          setIsMuted(next);
+          soundFx.setMuted(next);
+        }}
         onOpenHelp={() => setIsHelpOpen(true)}
-        playersCount={playersCount}
+        playersCount={room ? Object.keys(room.players).length : undefined}
         onLeaveRoom={room ? handleLeaveRoom : undefined}
+        isConnected={isConnected}
+        onOpenServerConfig={() => setIsServerConfigOpen(true)}
       />
 
-      {/* Floating Shouts Overlay */}
-      <ShoutToastOverlay messages={activeShouts} />
+      {/* Server Config Modal */}
+      <ServerConfigModal
+        isOpen={isServerConfigOpen}
+        onClose={() => setIsServerConfigOpen(false)}
+        currentBackendUrl={backendUrl}
+        isConnected={isConnected}
+        onSaveBackendUrl={handleSaveBackendUrl}
+        onReconnect={handleReconnect}
+      />
 
-      {/* Rules / How To Play Modal */}
-      <HowToPlayModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+      {/* How to play modal */}
+      <HowToPlayModal
+        isOpen={isHelpOpen}
+        onClose={() => setIsHelpOpen(false)}
+      />
 
-      {/* Letter Reveal Suspense Modal */}
-      {room?.state === 'countdown' && (
-        <CountdownModal
-          currentRound={room.currentRound}
-          totalRounds={room.settings.totalRounds}
-          targetLetter={room.currentLetter}
-        />
-      )}
-
-      {/* Freeze Grace Countdown Overlay */}
-      {room?.state === 'freeze_countdown' && (
-        <FreezeOverlay
-          stoppedBy={room.stoppedByPlayer}
-          countdownSeconds={room.freezeCountdownRemaining || 3}
-        />
-      )}
-
-      {/* Main Screen Router (Vertical Mobile Container) */}
-      <main className="flex-1 w-full max-w-md mx-auto flex flex-col">
-        {!room && (
+      {/* Main View Router */}
+      <main className="flex-1 flex flex-col">
+        {!room ? (
           <LobbyScreen
             onCreateRoom={handleCreateRoom}
             onJoinRoom={handleJoinRoom}
             onStartSoloPractice={handleStartSoloPractice}
             initialRoomCode={initialUrlRoomCode}
+            isConnected={isConnected}
+            onOpenServerConfig={() => setIsServerConfigOpen(true)}
           />
-        )}
-
-        {room && room.state === 'lobby' && (
+        ) : room.state === 'lobby' ? (
           <WaitingRoomScreen
             room={room}
             currentPlayerId={playerId}
             onStartGame={handleStartGame}
             onUpdateSettings={handleUpdateSettings}
             onSendShout={handleSendShout}
-            onSendChat={handleSendChat}
+            onSendChat={handleSendChatMessage}
             onLeaveRoom={handleLeaveRoom}
           />
-        )}
-
-        {room && (room.state === 'playing' || room.state === 'countdown' || room.state === 'freeze_countdown') && (
+        ) : room.state === 'playing' ? (
           <GameBoardScreen
             room={room}
             currentPlayerId={playerId}
@@ -638,9 +743,7 @@ export default function App() {
             onScreamChantinchanton={handleScreamChantinchanton}
             onSendShout={handleSendShout}
           />
-        )}
-
-        {room && room.state === 'reviewing' && (
+        ) : room.state === 'reviewing' ? (
           <ReviewScreen
             room={room}
             currentPlayerId={playerId}
@@ -649,9 +752,7 @@ export default function App() {
             onApproveReviews={handleApproveReviews}
             onSendShout={handleSendShout}
           />
-        )}
-
-        {room && room.state === 'round_results' && (
+        ) : room.state === 'round_results' ? (
           <RoundResultsScreen
             room={room}
             currentPlayerId={playerId}
@@ -659,24 +760,32 @@ export default function App() {
             onFinishGame={handleFinishGame}
             onSendShout={handleSendShout}
           />
-        )}
-
-        {room && room.state === 'game_over' && (
+        ) : room.state === 'game_over' ? (
           <GameOverScreen
             room={room}
             currentPlayerId={playerId}
             onRestartGame={handleRestartGame}
             onLeaveRoom={handleLeaveRoom}
           />
+        ) : null}
+
+        {/* Global Countdown Suspense Overlay */}
+        {room && room.state === 'countdown' && (
+          <CountdownModal
+            targetLetter={room.currentLetter}
+            currentRound={room.currentRound}
+            totalRounds={room.settings.totalRounds}
+          />
+        )}
+
+        {/* Global Freeze / Stopped Overlay */}
+        {room && room.state === 'freeze_countdown' && (
+          <FreezeOverlay
+            stoppedBy={room.stoppedByPlayer}
+            countdownSeconds={room.freezeCountdownRemaining || 3}
+          />
         )}
       </main>
-
-      {/* Minimal Footer */}
-      <footer className="border-t border-neutral-900/80 py-3 px-4 text-center text-[10px] text-neutral-400 max-w-md mx-auto w-full">
-        <p>
-          🇪🇨 Chantinchantón • Diccionario RAM en vivo • Volátil sin Base de Datos
-        </p>
-      </footer>
     </div>
   );
 }

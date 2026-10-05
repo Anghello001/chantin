@@ -158,9 +158,12 @@ async function transitionToReview(roomCode: string) {
 
 // Socket handlers
 io.on('connection', (socket: Socket) => {
+  console.log(`[SOCKET CONECTADO] id: ${socket.id} | IP: ${socket.handshake.address}`);
+
   // Create Room
   socket.on('create_room', ({ nickname, avatar, settings }) => {
     const roomCode = generateRoomCode();
+    console.log(`[CREAR SALA] Sala ${roomCode} creada por ${nickname || 'Anónimo'} (id: ${socket.id})`);
     const initialSettings: GameSettings = {
       ...getDefaultSettings(),
       ...(settings || {}),
