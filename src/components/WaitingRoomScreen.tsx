@@ -142,7 +142,7 @@ export const WaitingRoomScreen: React.FC<Props> = ({
                 {currentModeInfo.title}
               </div>
               <div className="text-[10px] text-neutral-400">
-                {room.settings.roundDuration}s por ronda • {room.settings.totalRounds} rondas
+                {room.settings.roundDuration}s juego • {room.settings.votingDuration || 20}s votación • {room.settings.totalRounds} rondas
               </div>
             </div>
           </div>
@@ -183,9 +183,9 @@ export const WaitingRoomScreen: React.FC<Props> = ({
               </div>
             </div>
 
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <span className="text-[10px] text-neutral-400 block mb-1">Tiempo:</span>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <span className="text-[10px] text-neutral-400 block mb-1">Juego:</span>
                 <div className="flex gap-1">
                   {[30, 60, 90].map((s) => (
                     <button
@@ -203,7 +203,28 @@ export const WaitingRoomScreen: React.FC<Props> = ({
                   ))}
                 </div>
               </div>
-              <div className="flex-1">
+
+              <div>
+                <span className="text-[10px] text-neutral-400 block mb-1">Votación:</span>
+                <div className="flex gap-1">
+                  {[20, 25, 30].map((vs) => (
+                    <button
+                      key={vs}
+                      type="button"
+                      onClick={() => onUpdateSettings({ votingDuration: vs })}
+                      className={`flex-1 py-1 rounded text-xs font-bold ${
+                        (room.settings.votingDuration || 20) === vs
+                          ? 'bg-amber-500 text-neutral-950'
+                          : 'bg-neutral-900 text-neutral-400'
+                      }`}
+                    >
+                      {vs}s
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
                 <span className="text-[10px] text-neutral-400 block mb-1">Rondas:</span>
                 <div className="flex gap-1">
                   {[3, 5, 7].map((r) => (

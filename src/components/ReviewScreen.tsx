@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Trophy, 
   ThumbsUp, 
   ThumbsDown, 
   Users, 
   Gavel, 
-  Clock 
+  Clock,
+  Sparkles
 } from 'lucide-react';
 import { RoomData, Player, Category } from '../types/game';
 import { soundFx } from '../utils/audio';
@@ -33,7 +33,7 @@ export const ReviewScreen: React.FC<Props> = ({
   const currentLetter = room.currentLetter;
   const peerVotes = room.peerVotes || {};
 
-  const totalTime = room.reviewTimerTotal || 20;
+  const totalTime = room.reviewTimerTotal || room.settings?.votingDuration || 20;
   const [secondsRemaining, setSecondsRemaining] = useState<number>(() => room.reviewTimerRemaining ?? totalTime);
   const autoProceedRef = useRef<boolean>(false);
 
@@ -74,16 +74,8 @@ export const ReviewScreen: React.FC<Props> = ({
     onCastVote(targetPlayerId, categoryId, voteType);
   };
 
-  const calculatePlayerRoundSum = (player: Player): number => {
-    let sum = 0;
-    for (const cat of categories) {
-      sum += player.roundScoreDetails?.[cat.id]?.points || 0;
-    }
-    return sum;
-  };
-
-  // Find words that need peer review / community consensus
-  const pendingOrUnregisteredWords: {
+  // Collect all submitted answers for this round
+  const roundAnswersList: {
     player: Player;
     category: Category;
     word: string;
@@ -95,32 +87,20 @@ export const ReviewScreen: React.FC<Props> = ({
   for (const p of players) {
     for (const cat of categories) {
       const rawWord = (p.currentRoundAnswers?.[cat.id] || '').trim();
-      if (!rawWord || !wordStartsWithLetter(rawWord, currentLetter)) continue;
+      if (!rawWord) continue;
 
       const scoreInfo = p.roundScoreDetails?.[cat.id] || { points: 0, status: 'invalid', notes: '' };
       const voteKey = `${p.id}_${cat.id}`;
       const voteEntry = peerVotes[voteKey] || { upvotes: [], downvotes: [] };
 
-      const isUnregisteredOrSubjective = 
-        scoreInfo.notes?.includes('no registr') || 
-        scoreInfo.notes?.includes('No encontrad') || 
-        scoreInfo.notes?.includes('Requiere') || 
-        scoreInfo.notes?.includes('Votación') ||
-        scoreInfo.notes?.includes('Rechazad') ||
-        scoreInfo.notes?.includes('Aprobada por la sala') ||
-        cat.validationType === 'subjective' ||
-        room.settings.gameMode !== 'classic';
-
-      if (isUnregisteredOrSubjective) {
-        pendingOrUnregisteredWords.push({
-          player: p,
-          category: cat,
-          word: rawWord,
-          scoreInfo,
-          voteEntry,
-          isApproved: scoreInfo.points > 0,
-        });
-      }
+      roundAnswersList.push({
+        player: p,
+        category: cat,
+        word: rawWord,
+        scoreInfo,
+        voteEntry,
+        isApproved: scoreInfo.points > 0,
+      });
     }
   }
 
@@ -165,7 +145,7 @@ export const ReviewScreen: React.FC<Props> = ({
         </div>
 
         <p className="text-[11px] text-neutral-400 text-center mt-2 font-medium">
-          ⚖️ Vota las palabras en duda con <strong className="text-emerald-400">👍 Aceptar</strong> o <strong className="text-rose-400">👎 Rechazar</strong>. La ronda continuará automáticamente al llegar a 0s.
+          ⚖️ Vota las palabras con <strong className="text-emerald-400">👍 Aceptar</strong> o <strong className="text-rose-400">👎 Rechazar</strong>. La ronda continuará automáticamente al llegar a 0s.
         </p>
       </div>
 
@@ -179,7 +159,7 @@ export const ReviewScreen: React.FC<Props> = ({
                 ¡{room.stoppedByPlayer.nickname} gritó Chantinchantón!
               </span>
               <span className="text-[10px] text-neutral-400 block">
-                Revisa las palabras y emite tus votos abajo
+                Emite tus votos antes de que finalice el tiempo
               </span>
             </div>
           </div>
@@ -189,23 +169,27 @@ export const ReviewScreen: React.FC<Props> = ({
         </div>
       )}
 
-      {/* TRIBUNAL DE PALABRAS EN DUDA (Like / Dislike) */}
-      {pendingOrUnregisteredWords.length > 0 && (
-        <div className="bg-neutral-900 border-2 border-amber-500/40 rounded-3xl p-4 space-y-3 shadow-lg">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Gavel className="w-4 h-4 text-amber-400" />
-              <h3 className="font-outfit font-black text-sm text-white uppercase tracking-wide">
-                Tribunal Comunitario ({pendingOrUnregisteredWords.length})
-              </h3>
-            </div>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
-              Votación en vivo
-            </span>
+      {/* TRIBUNAL & VOTACIÓN DE PALABRAS */}
+      <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-4 space-y-3 shadow-lg">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Gavel className="w-4 h-4 text-amber-400" />
+            <h3 className="font-outfit font-black text-sm text-white uppercase tracking-wide">
+              Votación de Respuestas ({roundAnswersList.length})
+            </h3>
           </div>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+            En vivo
+          </span>
+        </div>
 
+        {roundAnswersList.length === 0 ? (
+          <div className="py-8 text-center text-neutral-500 text-xs font-medium">
+            No se enviaron respuestas en esta ronda.
+          </div>
+        ) : (
           <div className="space-y-2.5">
-            {pendingOrUnregisteredWords.map((item, idx) => {
+            {roundAnswersList.map((item, idx) => {
               const { player, category, word, scoreInfo, voteEntry, isApproved } = item;
               const isMyAnswer = player.id === currentPlayerId;
               const hasMyUp = voteEntry.upvotes.includes(currentPlayerId);
@@ -213,10 +197,10 @@ export const ReviewScreen: React.FC<Props> = ({
 
               return (
                 <div 
-                  key={`pending-${player.id}-${category.id}-${idx}`}
+                  key={`answer-${player.id}-${category.id}-${idx}`}
                   className={`p-3 rounded-2xl border transition-all ${
                     isApproved
-                      ? 'bg-emerald-950/40 border-emerald-500/40'
+                      ? 'bg-emerald-950/30 border-emerald-500/40'
                       : 'bg-neutral-950 border-neutral-800'
                   }`}
                 >
@@ -237,9 +221,11 @@ export const ReviewScreen: React.FC<Props> = ({
                       <span className="text-sm font-black font-outfit uppercase text-white tracking-wide block truncate">
                         "{word}"
                       </span>
-                      <span className="text-[10px] text-neutral-400 block truncate">
-                        {scoreInfo.notes || 'Palabra sujeta a votación de la sala'}
-                      </span>
+                      {scoreInfo.notes && (
+                        <span className="text-[10px] text-neutral-400 block truncate">
+                          {scoreInfo.notes}
+                        </span>
+                      )}
                     </div>
 
                     <div className="text-right shrink-0">
@@ -247,7 +233,7 @@ export const ReviewScreen: React.FC<Props> = ({
                         {scoreInfo.points} pts
                       </span>
                       <span className="text-[9px] text-neutral-400">
-                        {isApproved ? 'Aprobada' : 'En duda'}
+                        {isApproved ? 'Válida' : '0 pts'}
                       </span>
                     </div>
                   </div>
@@ -297,130 +283,7 @@ export const ReviewScreen: React.FC<Props> = ({
               );
             })}
           </div>
-        </div>
-      )}
-
-      {/* DETAILED PLAYER SCORE CARDS */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between px-1">
-          <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">
-            Respuestas de los Jugadores
-          </span>
-          <span className="text-[11px] text-amber-400 font-semibold">
-            Letra actual: <strong className="text-white text-xs">{currentLetter}</strong>
-          </span>
-        </div>
-
-        {players.map((player) => {
-          const isMe = player.id === currentPlayerId;
-          const roundSum = calculatePlayerRoundSum(player);
-
-          return (
-            <div
-              key={player.id}
-              className={`rounded-3xl border p-4 transition-all ${
-                isMe
-                  ? 'bg-neutral-900/95 border-amber-500/50 shadow-md'
-                  : 'bg-neutral-900/70 border-neutral-800'
-              }`}
-            >
-              {/* Player Header */}
-              <div className="flex items-center justify-between gap-3 pb-3 border-b border-neutral-800">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-10 h-10 rounded-2xl bg-neutral-950 border border-neutral-800 flex items-center justify-center text-xl shrink-0">
-                    {player.avatar}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-outfit font-black text-sm text-white truncate">
-                        {player.nickname}
-                      </span>
-                      {isMe && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold uppercase">
-                          Tú
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-[10px] text-neutral-400">
-                      Total acumulado: {player.score} pts
-                    </span>
-                  </div>
-                </div>
-
-                <div className="text-right shrink-0">
-                  <div className="text-base font-black font-outfit text-amber-400">
-                    +{roundSum} pts
-                  </div>
-                  <span className="text-[10px] text-neutral-400 font-medium">
-                    Esta ronda
-                  </span>
-                </div>
-              </div>
-
-              {/* Answers Grid */}
-              <div className="pt-3 space-y-2">
-                {categories.map((cat) => {
-                  const answer = player.currentRoundAnswers?.[cat.id] || '';
-                  const scoreDetail = player.roundScoreDetails?.[cat.id] || {
-                    points: 0,
-                    status: 'invalid',
-                    verified: false,
-                    notes: '',
-                  };
-
-                  const isNonEmpty = Boolean(answer && answer.trim());
-                  const pts = scoreDetail.points || 0;
-
-                  return (
-                    <div
-                      key={cat.id}
-                      className="p-2.5 rounded-2xl bg-neutral-950/80 border border-neutral-800/80 flex flex-col gap-1.5"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5 text-xs text-neutral-400 min-w-0">
-                          <span>{cat.icon}</span>
-                          <span className="font-semibold truncate">{cat.name}:</span>
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span
-                            className={`text-xs font-black font-outfit px-2 py-0.5 rounded-lg ${
-                              pts === 100
-                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                : pts === 50
-                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                                : pts > 0
-                                ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                                : 'bg-neutral-900 text-neutral-500 border border-neutral-800'
-                            }`}
-                          >
-                            {pts} pts
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Word text */}
-                      <div className="flex items-center justify-between gap-2">
-                        <span
-                          className={`text-xs font-bold truncate ${
-                            isNonEmpty ? 'text-white' : 'text-neutral-600 italic'
-                          }`}
-                        >
-                          {isNonEmpty ? answer : '— Sin respuesta —'}
-                        </span>
-                        {scoreDetail.notes && (
-                          <span className="text-[10px] text-neutral-400 truncate max-w-[50%] text-right">
-                            {scoreDetail.notes}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
+        )}
       </div>
 
       {/* Quick Shouts Bar */}

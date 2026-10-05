@@ -47,6 +47,7 @@ export type RoomState =
 
 export interface GameSettings {
   roundDuration: number;
+  votingDuration?: number; // 20, 25, 30 seconds
   gameMode: GameMode;
   totalRounds: number;
   categories: Category[];

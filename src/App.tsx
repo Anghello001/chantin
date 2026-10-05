@@ -681,11 +681,13 @@ export default function App() {
           prev.peerVotes || {}
         );
 
+        const votingTime = prev.settings.votingDuration || 20;
+
         return {
           ...prev,
           state: 'reviewing',
-          reviewTimerRemaining: 20,
-          reviewTimerTotal: 20,
+          reviewTimerRemaining: votingTime,
+          reviewTimerTotal: votingTime,
           players: {
             ...prev.players,
             [playerId]: {
@@ -704,7 +706,7 @@ export default function App() {
             if (soloTimerRef.current) clearInterval(soloTimerRef.current);
             return prev;
           }
-          const currentRemaining = prev.reviewTimerRemaining ?? 20;
+          const currentRemaining = prev.reviewTimerRemaining ?? (prev.settings.votingDuration || 20);
           if (currentRemaining > 1) {
             return {
               ...prev,

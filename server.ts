@@ -59,6 +59,7 @@ function generateRoomCode(): string {
 function getDefaultSettings(): GameSettings {
   return {
     roundDuration: 60,
+    votingDuration: 20,
     gameMode: 'classic',
     totalRounds: 5,
     categories: [...CLASSIC_CATEGORIES],
@@ -173,10 +174,11 @@ async function transitionToReview(roomCode: string) {
   const room = rooms.get(roomCode);
   if (!room) return;
 
+  const votingTime = room.settings.votingDuration || 20;
   room.state = 'reviewing';
   room.freezeCountdownRemaining = 0;
-  room.reviewTimerTotal = 20;
-  room.reviewTimerRemaining = 20;
+  room.reviewTimerTotal = votingTime;
+  room.reviewTimerRemaining = votingTime;
 
   // Compile answers map
   const answersByPlayer: Record<string, Record<string, string>> = {};
@@ -199,7 +201,7 @@ async function transitionToReview(roomCode: string) {
 
   broadcastRoom(roomCode);
 
-  // Start 20s server review timer countdown
+  // Start server review timer countdown
   const existingReview = reviewTimers.get(roomCode);
   if (existingReview) clearInterval(existingReview);
 
@@ -215,7 +217,7 @@ async function transitionToReview(roomCode: string) {
       currentRoom.reviewTimerRemaining -= 1;
       io.to(roomCode).emit('review_timer_tick', {
         remaining: currentRoom.reviewTimerRemaining,
-        total: currentRoom.reviewTimerTotal || 20,
+        total: currentRoom.reviewTimerTotal || votingTime,
       });
     } else {
       clearInterval(reviewInterval);

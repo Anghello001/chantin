@@ -48,6 +48,7 @@ export const LobbyScreen: React.FC<Props> = ({
   const [roomCodeInput, setRoomCodeInput] = useState(initialRoomCode);
   const [selectedMode, setSelectedMode] = useState<GameMode>('classic');
   const [roundDuration, setRoundDuration] = useState<number>(60);
+  const [votingDuration, setVotingDuration] = useState<number>(20);
   const [totalRounds, setTotalRounds] = useState<number>(5);
   const [showConfig, setShowConfig] = useState(false);
   const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
@@ -72,6 +73,7 @@ export const LobbyScreen: React.FC<Props> = ({
     onCreateRoom(nickname.trim(), avatar, {
       gameMode: selectedMode,
       roundDuration,
+      votingDuration,
       totalRounds,
       categories: ALL_PRESET_MODES[selectedMode].categories,
     });
@@ -278,14 +280,19 @@ export const LobbyScreen: React.FC<Props> = ({
               onClick={() => setShowConfig(!showConfig)}
               className="w-full flex items-center justify-between text-xs font-semibold text-neutral-300"
             >
-              <div className="flex items-center gap-3">
-                <span className="flex items-center gap-1 text-neutral-400">
+              <div className="flex items-center gap-2 text-neutral-400">
+                <span className="flex items-center gap-1">
                   <Timer className="w-3.5 h-3.5 text-amber-400" />
                   {roundDuration}s
                 </span>
-                <span className="flex items-center gap-1 text-neutral-400">
+                <span>•</span>
+                <span className="text-amber-300 font-semibold">
+                  {votingDuration}s voto
+                </span>
+                <span>•</span>
+                <span className="flex items-center gap-1">
                   <Trophy className="w-3.5 h-3.5 text-amber-400" />
-                  {totalRounds} Rondas
+                  {totalRounds} R
                 </span>
               </div>
               <div className="flex items-center gap-1 text-amber-400 text-[11px]">
@@ -298,7 +305,7 @@ export const LobbyScreen: React.FC<Props> = ({
               <div className="mt-3 pt-3 border-t border-neutral-800 space-y-3">
                 <div>
                   <span className="block text-[11px] text-neutral-400 mb-1 font-medium">
-                    Segundos por ronda:
+                    Segundos por ronda (juego):
                   </span>
                   <div className="flex gap-1.5">
                     {[45, 60, 90, 120].map((sec) => (
@@ -313,6 +320,28 @@ export const LobbyScreen: React.FC<Props> = ({
                         }`}
                       >
                         {sec}s
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="block text-[11px] text-neutral-400 mb-1 font-medium">
+                    Tiempo de votación (mínimo 20s):
+                  </span>
+                  <div className="flex gap-1.5">
+                    {[20, 25, 30].map((vSec) => (
+                      <button
+                        key={vSec}
+                        type="button"
+                        onClick={() => setVotingDuration(vSec)}
+                        className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition ${
+                          votingDuration === vSec
+                            ? 'bg-amber-500 text-neutral-950'
+                            : 'bg-neutral-950 border border-neutral-800 text-neutral-300'
+                        }`}
+                      >
+                        {vSec}s
                       </button>
                     ))}
                   </div>
