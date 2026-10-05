@@ -23,13 +23,15 @@ import { ServerConfigModal } from './components/ServerConfigModal';
 import { soundFx } from './utils/audio';
 import { calculateAutomaticScores } from './utils/scoreCalculator';
 
+const DEFAULT_RENDER_BACKEND = 'https://chantin.onrender.com';
+
 export default function App() {
   const [backendUrl, setBackendUrl] = useState<string>(() => {
     return (
       import.meta.env.VITE_BACKEND_URL ||
       import.meta.env.VITE_SOCKET_URL ||
       localStorage.getItem('chantin_backend_url') ||
-      ''
+      DEFAULT_RENDER_BACKEND
     );
   });
 
@@ -105,6 +107,17 @@ export default function App() {
           ...prev,
           timerRemaining: remaining,
           timerTotal: total,
+        };
+      });
+    });
+
+    socketClient.on('review_timer_tick', ({ remaining, total }) => {
+      setRoom((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          reviewTimerRemaining: remaining,
+          reviewTimerTotal: total,
         };
       });
     });
@@ -665,6 +678,8 @@ export default function App() {
         return {
           ...prev,
           state: 'reviewing',
+          reviewTimerRemaining: 20,
+          reviewTimerTotal: 20,
           players: {
             ...prev.players,
             [playerId]: {
@@ -674,6 +689,58 @@ export default function App() {
           },
         };
       });
+
+      // Start solo review timer countdown
+      if (soloTimerRef.current) clearInterval(soloTimerRef.current);
+      soloTimerRef.current = setInterval(() => {
+        setRoom((prev) => {
+          if (!prev || prev.state !== 'reviewing') {
+            if (soloTimerRef.current) clearInterval(soloTimerRef.current);
+            return prev;
+          }
+          const currentRemaining = prev.reviewTimerRemaining ?? 20;
+          if (currentRemaining > 1) {
+            return {
+              ...prev,
+              reviewTimerRemaining: currentRemaining - 1,
+            };
+          } else {
+            if (soloTimerRef.current) clearInterval(soloTimerRef.current);
+            // Auto finalize solo round
+            const player = prev.players[playerId];
+            let roundTotal = 0;
+            for (const d of Object.values(player?.roundScoreDetails || {})) {
+              roundTotal += d.points || 0;
+            }
+            const newScore = (player?.score || 0) + roundTotal;
+            const roundAnswers = { [playerId]: { ...(player?.currentRoundAnswers || {}) } };
+            const roundScores = { [playerId]: roundTotal };
+
+            return {
+              ...prev,
+              state: 'round_results',
+              players: {
+                ...prev.players,
+                [playerId]: {
+                  ...player,
+                  score: newScore,
+                  totalRoundPoints: roundTotal,
+                },
+              },
+              roundHistory: [
+                ...prev.roundHistory,
+                {
+                  round: prev.currentRound,
+                  letter: prev.currentLetter,
+                  answers: roundAnswers,
+                  scores: roundScores,
+                  screamedBy: prev.stoppedByPlayer?.nickname,
+                },
+              ],
+            };
+          }
+        });
+      }, 1000);
     }, 3000);
   };
 

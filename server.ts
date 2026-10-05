@@ -42,6 +42,7 @@ const PORT = Number(process.env.PORT) || 3000;
 const rooms = new Map<string, RoomData>();
 const playerToRoom = new Map<string, string>(); // socket.id -> roomCode
 const roomTimers = new Map<string, NodeJS.Timeout>();
+const reviewTimers = new Map<string, NodeJS.Timeout>();
 
 function generateRoomCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -77,6 +78,11 @@ function clearRoomTimer(roomCode: string) {
   if (timer) {
     clearInterval(timer);
     roomTimers.delete(roomCode);
+  }
+  const revTimer = reviewTimers.get(roomCode);
+  if (revTimer) {
+    clearInterval(revTimer);
+    reviewTimers.delete(roomCode);
   }
 }
 
@@ -127,12 +133,50 @@ function triggerFreezeAndReview(roomCode: string, stoppedBy?: { id: string; nick
   }, 1000);
 }
 
+function finalizeRoundAndProceed(roomCode: string) {
+  const room = rooms.get(roomCode);
+  if (!room || room.state !== 'reviewing') return;
+
+  const revTimer = reviewTimers.get(roomCode);
+  if (revTimer) {
+    clearInterval(revTimer);
+    reviewTimers.delete(roomCode);
+  }
+
+  const roundScores: Record<string, number> = {};
+  const roundAnswers: Record<string, Record<string, string>> = {};
+
+  for (const [pid, player] of Object.entries(room.players)) {
+    let roundTotal = 0;
+    for (const detail of Object.values(player.roundScoreDetails || {})) {
+      roundTotal += detail.points || 0;
+    }
+    player.totalRoundPoints = roundTotal;
+    player.score += roundTotal;
+    roundScores[pid] = roundTotal;
+    roundAnswers[pid] = { ...player.currentRoundAnswers };
+  }
+
+  room.roundHistory.push({
+    round: room.currentRound,
+    letter: room.currentLetter,
+    answers: roundAnswers,
+    scores: roundScores,
+    screamedBy: room.stoppedByPlayer?.nickname,
+  });
+
+  room.state = 'round_results';
+  broadcastRoom(roomCode);
+}
+
 async function transitionToReview(roomCode: string) {
   const room = rooms.get(roomCode);
   if (!room) return;
 
   room.state = 'reviewing';
   room.freezeCountdownRemaining = 0;
+  room.reviewTimerTotal = 20;
+  room.reviewTimerRemaining = 20;
 
   // Compile answers map
   const answersByPlayer: Record<string, Record<string, string>> = {};
@@ -154,6 +198,33 @@ async function transitionToReview(roomCode: string) {
   }
 
   broadcastRoom(roomCode);
+
+  // Start 20s server review timer countdown
+  const existingReview = reviewTimers.get(roomCode);
+  if (existingReview) clearInterval(existingReview);
+
+  const reviewInterval = setInterval(() => {
+    const currentRoom = rooms.get(roomCode);
+    if (!currentRoom || currentRoom.state !== 'reviewing') {
+      clearInterval(reviewInterval);
+      reviewTimers.delete(roomCode);
+      return;
+    }
+
+    if (currentRoom.reviewTimerRemaining && currentRoom.reviewTimerRemaining > 1) {
+      currentRoom.reviewTimerRemaining -= 1;
+      io.to(roomCode).emit('review_timer_tick', {
+        remaining: currentRoom.reviewTimerRemaining,
+        total: currentRoom.reviewTimerTotal || 20,
+      });
+    } else {
+      clearInterval(reviewInterval);
+      reviewTimers.delete(roomCode);
+      finalizeRoundAndProceed(roomCode);
+    }
+  }, 1000);
+
+  reviewTimers.set(roomCode, reviewInterval);
 }
 
 // Socket handlers

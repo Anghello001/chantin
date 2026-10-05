@@ -1,7 +1,6 @@
 import React from 'react';
 import { 
   Trophy, 
-  ShieldCheck,
   BookCheck,
   ThumbsUp,
   ThumbsDown,
@@ -9,7 +8,9 @@ import {
   CheckCircle2,
   AlertTriangle,
   HelpCircle,
-  Gavel
+  Gavel,
+  Clock,
+  Sparkles
 } from 'lucide-react';
 import { RoomData, Player, Category } from '../types/game';
 import { soundFx } from '../utils/audio';
@@ -19,30 +20,26 @@ import { QuickShoutBar } from './QuickShoutBar';
 interface Props {
   room: RoomData;
   currentPlayerId: string;
-  onUpdateScore: (targetPlayerId: string, categoryId: string, points: number, status: string, notes?: string) => void;
+  onUpdateScore?: (targetPlayerId: string, categoryId: string, points: number, status: string, notes?: string) => void;
   onCastVote: (targetPlayerId: string, categoryId: string, voteType: 'up' | 'down') => void;
-  onApproveReviews: () => void;
+  onApproveReviews?: () => void;
   onSendShout: (text: string, type: string) => void;
 }
 
 export const ReviewScreen: React.FC<Props> = ({
   room,
   currentPlayerId,
-  onUpdateScore,
   onCastVote,
-  onApproveReviews,
   onSendShout,
 }) => {
-  const isHost = room.hostId === currentPlayerId;
   const categories = room.settings.categories;
   const players: Player[] = Object.values(room.players);
   const currentLetter = room.currentLetter;
   const peerVotes = room.peerVotes || {};
 
-  const handlePointChange = (targetPlayerId: string, categoryId: string, points: number, status: string) => {
-    soundFx.playScoreVote(points);
-    onUpdateScore(targetPlayerId, categoryId, points, status);
-  };
+  const reviewRemaining = room.reviewTimerRemaining ?? 20;
+  const reviewTotal = room.reviewTimerTotal ?? 20;
+  const progressPercent = Math.max(0, Math.min(100, (reviewRemaining / reviewTotal) * 100));
 
   const handleVote = (targetPlayerId: string, categoryId: string, voteType: 'up' | 'down') => {
     soundFx.playTick();
@@ -57,7 +54,7 @@ export const ReviewScreen: React.FC<Props> = ({
     return sum;
   };
 
-  // Find all words that need room consensus (words not in standard dictionary or in creative categories)
+  // Find words that need peer review / community consensus
   const pendingOrUnregisteredWords: {
     player: Player;
     category: Category;
@@ -75,9 +72,7 @@ export const ReviewScreen: React.FC<Props> = ({
       const scoreInfo = p.roundScoreDetails?.[cat.id] || { points: 0, status: 'invalid', notes: '' };
       const voteKey = `${p.id}_${cat.id}`;
       const voteEntry = peerVotes[voteKey] || { upvotes: [], downvotes: [] };
-      const hasUpvotes = voteEntry.upvotes.length > voteEntry.downvotes.length;
 
-      // If it has notes mentioning "no registrado" or "no encontrada" or "Votación" or points are 0 or creative mode
       const isUnregisteredOrSubjective = 
         scoreInfo.notes?.includes('no registr') || 
         scoreInfo.notes?.includes('No encontrad') || 
@@ -101,183 +96,174 @@ export const ReviewScreen: React.FC<Props> = ({
     }
   }
 
+  const isUrgent = reviewRemaining <= 5;
+
   return (
-    <div className="w-full max-w-md mx-auto px-4 py-4 flex flex-col gap-4 pb-28">
-      {/* Top Review Banner */}
-      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-lg">
-        <div className="flex items-center gap-2.5">
-          <div className="w-12 h-12 rounded-2xl bg-neutral-950 border-2 border-amber-500/70 flex items-center justify-center font-outfit text-2xl font-black text-amber-400 shrink-0 shadow-inner">
-            {currentLetter}
-          </div>
-          <div>
-            <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">
-              Revisión • Ronda {room.currentRound}/{room.settings.totalRounds}
-            </div>
-            <div className="text-sm font-black text-white font-outfit">
-              Votación de Palabras con <span className="text-amber-400">"{currentLetter}"</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="text-right">
-          <span className="text-[10px] text-neutral-400 block font-medium">
-            Filtro Humano
-          </span>
-          <span className="text-xs font-bold text-amber-400 flex items-center gap-1 justify-end">
-            <Users className="w-3.5 h-3.5" /> Vota 👍 o 👎
-          </span>
-        </div>
-      </div>
-
-      {/* Partial Score Bar */}
-      <div className="bg-neutral-900/80 border border-neutral-800 rounded-2xl p-3">
-        <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2 flex items-center gap-1 font-outfit">
-          <Trophy className="w-3.5 h-3.5 text-amber-400" />
-          <span>Puntaje de la Ronda en Vivo</span>
-        </div>
-
-        <div className="grid grid-cols-2 gap-1.5">
-          {players.map((p) => {
-            const sum = calculatePlayerRoundSum(p);
-            return (
-              <div
-                key={p.id}
-                className={`p-2 rounded-xl border flex items-center justify-between text-xs transition ${
-                  p.id === currentPlayerId
-                    ? 'bg-neutral-950 border-amber-500/50 text-white'
-                    : 'bg-neutral-950/60 border-neutral-800 text-neutral-300'
-                }`}
-              >
-                <div className="flex items-center gap-1.5 truncate">
-                  <span>{p.avatar}</span>
-                  <span className="truncate font-bold">{p.nickname}</span>
-                </div>
-                <span className="font-outfit font-black text-amber-400 shrink-0 text-sm">
-                  +{sum}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* SECTION 1: TRIBUNAL DE PALABRAS NO REGISTRADAS / EN DUDA */}
-      <div className="bg-neutral-900 border border-amber-500/30 rounded-2xl p-3.5 space-y-3 shadow-md">
-        <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
+    <div className="w-full max-w-md mx-auto px-4 py-4 flex flex-col gap-4 pb-20">
+      {/* Dynamic Review Countdown Banner */}
+      <div className={`p-4 rounded-3xl border shadow-xl transition-all ${
+        isUrgent 
+          ? 'bg-rose-950/80 border-rose-500/80 animate-pulse' 
+          : 'bg-neutral-900/90 border-neutral-800'
+      }`}>
+        <div className="flex items-center justify-between gap-3 mb-2">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center">
-              <Gavel className="w-3.5 h-3.5" />
-            </div>
+            <Clock className={`w-5 h-5 ${isUrgent ? 'text-rose-400' : 'text-amber-400 animate-spin-slow'}`} />
             <div>
-              <h3 className="text-xs font-black text-white uppercase font-outfit tracking-wide">
-                Tribunal de Palabras No Registradas
-              </h3>
-              <p className="text-[10px] text-neutral-400">
-                Vota a favor si conoces la palabra para darle los puntos al jugador
-              </p>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 block">
+                Tiempo de Votación
+              </span>
+              <span className={`text-base font-black font-outfit ${isUrgent ? 'text-rose-300' : 'text-white'}`}>
+                {reviewRemaining}s restantes
+              </span>
             </div>
           </div>
-          <span className="text-[10px] font-black font-outfit px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
-            {pendingOrUnregisteredWords.length} en duda
-          </span>
+          <div className="text-right">
+            <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider block font-outfit">
+              Letra: {currentLetter}
+            </span>
+            <span className="text-[10px] text-neutral-400">
+              Ronda {room.currentRound} de {room.settings.totalRounds}
+            </span>
+          </div>
         </div>
 
-        {pendingOrUnregisteredWords.length === 0 ? (
-          <div className="p-3 bg-neutral-950 rounded-xl border border-neutral-800 text-center text-xs text-emerald-400 flex items-center justify-center gap-2 font-medium">
-            <CheckCircle2 className="w-4 h-4" />
-            <span>¡Todas las palabras fueron verificadas automáticamente en el diccionario!</span>
+        {/* Animated Progress Bar */}
+        <div className="w-full h-2 bg-neutral-950 rounded-full overflow-hidden border border-neutral-800">
+          <div 
+            className={`h-full transition-all duration-1000 rounded-full ${
+              isUrgent ? 'bg-rose-500' : 'bg-gradient-to-r from-amber-500 to-emerald-400'
+            }`}
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+
+        <p className="text-[11px] text-neutral-400 text-center mt-2 font-medium">
+          ⚖️ Vota las palabras en duda con <strong className="text-emerald-400">👍 Aceptar</strong> o <strong className="text-rose-400">👎 Rechazar</strong>. La ronda continuará automáticamente.
+        </p>
+      </div>
+
+      {/* Stop by player shoutout */}
+      {room.stoppedByPlayer && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">{room.stoppedByPlayer.avatar}</span>
+            <div>
+              <span className="text-xs font-bold text-amber-300 font-outfit">
+                ¡{room.stoppedByPlayer.nickname} gritó Chantinchantón!
+              </span>
+              <span className="text-[10px] text-neutral-400 block">
+                Revisa las palabras y emite tus votos abajo
+              </span>
+            </div>
           </div>
-        ) : (
+          <span className="px-2.5 py-1 rounded-xl bg-amber-400 text-neutral-950 font-black text-xs font-outfit uppercase shrink-0">
+            Stop
+          </span>
+        </div>
+      )}
+
+      {/* TRIBUNAL DE PALABRAS EN DUDA */}
+      {pendingOrUnregisteredWords.length > 0 && (
+        <div className="bg-neutral-900 border-2 border-amber-500/40 rounded-3xl p-4 space-y-3 shadow-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Gavel className="w-4 h-4 text-amber-400" />
+              <h3 className="font-outfit font-black text-sm text-white uppercase tracking-wide">
+                Tribunal Comunitario ({pendingOrUnregisteredWords.length})
+              </h3>
+            </div>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+              Votación en vivo
+            </span>
+          </div>
+
           <div className="space-y-2.5">
             {pendingOrUnregisteredWords.map((item, idx) => {
-              const hasMyUp = item.voteEntry.upvotes.includes(currentPlayerId);
-              const hasMyDown = item.voteEntry.downvotes.includes(currentPlayerId);
-              const isMyAnswer = item.player.id === currentPlayerId;
-              const points = item.scoreInfo.points;
+              const { player, category, word, scoreInfo, voteEntry, isApproved } = item;
+              const isMyAnswer = player.id === currentPlayerId;
+              const hasMyUp = voteEntry.upvotes.includes(currentPlayerId);
+              const hasMyDown = voteEntry.downvotes.includes(currentPlayerId);
 
               return (
-                <div
-                  key={`${item.player.id}_${item.category.id}_${idx}`}
-                  className={`p-3 rounded-xl bg-neutral-950 border transition ${
-                    points > 0
-                      ? 'border-emerald-500/40 bg-emerald-950/10'
-                      : 'border-amber-500/30 bg-neutral-950'
+                <div 
+                  key={`pending-${player.id}-${category.id}-${idx}`}
+                  className={`p-3 rounded-2xl border transition-all ${
+                    isApproved
+                      ? 'bg-emerald-950/40 border-emerald-500/40'
+                      : 'bg-neutral-950 border-neutral-800'
                   }`}
                 >
-                  {/* Autor y Categoría */}
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-base">{item.player.avatar}</span>
-                      <div className="min-w-0">
-                        <span className="text-xs font-black text-white truncate block font-outfit">
-                          {item.player.nickname} {isMyAnswer && '(Tú)'}
-                        </span>
-                        <span className="text-[10px] text-neutral-400 flex items-center gap-1 font-medium">
-                          <span>{item.category.icon}</span>
-                          <span>{item.category.name}</span>
-                        </span>
-                      </div>
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-base">{player.avatar}</span>
+                      <span className="text-xs font-bold text-neutral-200">
+                        {player.nickname} {isMyAnswer && <span className="text-amber-400 font-normal">(Tú)</span>}
+                      </span>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded-lg bg-neutral-900 text-neutral-400 font-medium border border-neutral-800">
+                      {category.icon} {category.name}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 py-1">
+                    <div className="min-w-0">
+                      <span className="text-sm font-black font-outfit uppercase text-white tracking-wide block truncate">
+                        "{word}"
+                      </span>
+                      <span className="text-[10px] text-neutral-400 block truncate">
+                        {scoreInfo.notes || 'Palabra sujeta a votación de la sala'}
+                      </span>
                     </div>
 
-                    {/* Estado actual de puntos */}
-                    <div className="text-right">
-                      <span
-                        className={`text-xs font-black font-outfit px-2.5 py-1 rounded-lg border inline-block ${
-                          points > 0
-                            ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50 shadow-sm'
-                            : 'bg-neutral-900 text-neutral-400 border-neutral-800'
-                        }`}
-                      >
-                        {points > 0 ? `+${points} pts (Válida)` : '0 pts (En duda)'}
+                    <div className="text-right shrink-0">
+                      <span className={`text-xs font-black font-outfit block ${isApproved ? 'text-emerald-400' : 'text-neutral-500'}`}>
+                        {scoreInfo.points} pts
+                      </span>
+                      <span className="text-[9px] text-neutral-400">
+                        {isApproved ? 'Aprobada' : 'En duda'}
                       </span>
                     </div>
                   </div>
 
-                  {/* Palabra escrita */}
-                  <div className="bg-neutral-900/90 px-3 py-2 rounded-xl text-sm font-black uppercase font-outfit text-white tracking-wider mb-2.5 flex items-center justify-between border border-neutral-800">
-                    <span className="text-amber-300 font-extrabold">{item.word}</span>
-                    <span className="text-[10px] font-medium text-neutral-400">
-                      {item.scoreInfo.notes || 'Sujeta a votación de la sala'}
-                    </span>
-                  </div>
-
-                  {/* Controles de Votación del Tribunal */}
-                  <div className="flex items-center justify-between pt-1 border-t border-neutral-900">
-                    <div className="text-[11px] font-bold text-neutral-300 flex items-center gap-2">
-                      <span className="text-emerald-400">{item.voteEntry.upvotes.length} 👍</span>
-                      <span className="text-neutral-600">•</span>
-                      <span className="text-rose-400">{item.voteEntry.downvotes.length} 👎</span>
+                  {/* Voting Action Buttons */}
+                  <div className="flex items-center justify-between pt-2 mt-2 border-t border-neutral-800/80">
+                    <div className="text-[11px] text-neutral-400 flex items-center gap-1.5 font-bold">
+                      <Users className="w-3 h-3 text-neutral-500" />
+                      <span>{voteEntry.upvotes.length} 👍</span>
+                      <span>•</span>
+                      <span>{voteEntry.downvotes.length} 👎</span>
                     </div>
 
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
                         disabled={isMyAnswer}
-                        onClick={() => handleVote(item.player.id, item.category.id, 'up')}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-black font-outfit flex items-center gap-1.5 transition ${
+                        onClick={() => handleVote(player.id, category.id, 'up')}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
                           hasMyUp
-                            ? 'bg-emerald-500 text-neutral-950 shadow-md scale-105'
-                            : 'bg-neutral-900 text-neutral-300 hover:text-emerald-400 border border-neutral-800'
+                            ? 'bg-emerald-500 text-neutral-950 shadow-md font-black scale-105'
+                            : 'bg-neutral-900 text-neutral-300 hover:text-emerald-400 hover:bg-neutral-850 border border-neutral-800'
                         } ${isMyAnswer ? 'opacity-40 cursor-not-allowed' : 'active:scale-95'}`}
-                        title={isMyAnswer ? 'No puedes votar tu propia palabra' : 'Votar que SÍ es válida'}
+                        title={isMyAnswer ? 'No puedes votar tu propia palabra' : 'Aceptar palabra'}
                       >
                         <ThumbsUp className="w-3.5 h-3.5" />
-                        <span>Aceptar 👍</span>
+                        <span>Aceptar</span>
                       </button>
 
                       <button
                         type="button"
                         disabled={isMyAnswer}
-                        onClick={() => handleVote(item.player.id, item.category.id, 'down')}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-black font-outfit flex items-center gap-1.5 transition ${
+                        onClick={() => handleVote(player.id, category.id, 'down')}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
                           hasMyDown
-                            ? 'bg-rose-600 text-white shadow-md scale-105'
-                            : 'bg-neutral-900 text-neutral-300 hover:text-rose-400 border border-neutral-800'
+                            ? 'bg-rose-600 text-white shadow-md font-black scale-105'
+                            : 'bg-neutral-900 text-neutral-300 hover:text-rose-400 hover:bg-neutral-850 border border-neutral-800'
                         } ${isMyAnswer ? 'opacity-40 cursor-not-allowed' : 'active:scale-95'}`}
-                        title={isMyAnswer ? 'No puedes votar tu propia palabra' : 'Votar que NO es válida'}
+                        title={isMyAnswer ? 'No puedes votar tu propia palabra' : 'Rechazar palabra'}
                       >
                         <ThumbsDown className="w-3.5 h-3.5" />
-                        <span>Rechazar 👎</span>
+                        <span>Rechazar</span>
                       </button>
                     </div>
                   </div>
@@ -285,134 +271,125 @@ export const ReviewScreen: React.FC<Props> = ({
               );
             })}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* SECTION 2: DESGLOSE COMPLETO POR CATEGORÍAS */}
+      {/* DETAILED PLAYER SCORE CARDS */}
       <div className="space-y-3">
-        <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider px-1 font-outfit">
-          Desglose Completo de la Ronda
+        <div className="flex items-center justify-between px-1">
+          <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">
+            Respuestas de los Jugadores
+          </span>
+          <span className="text-[11px] text-amber-400 font-semibold">
+            Letra actual: <strong className="text-white text-xs">{currentLetter}</strong>
+          </span>
         </div>
 
-        {categories.map((cat) => {
+        {players.map((player) => {
+          const isMe = player.id === currentPlayerId;
+          const roundSum = calculatePlayerRoundSum(player);
+
           return (
             <div
-              key={cat.id}
-              className="bg-neutral-900 border border-neutral-800 rounded-2xl p-3.5 space-y-2.5"
+              key={player.id}
+              className={`rounded-3xl border p-4 transition-all ${
+                isMe
+                  ? 'bg-neutral-900/95 border-amber-500/50 shadow-md'
+                  : 'bg-neutral-900/70 border-neutral-800'
+              }`}
             >
-              {/* Category Header */}
-              <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-white font-outfit uppercase">
-                  <span>{cat.icon}</span>
-                  <span>{cat.name}</span>
+              {/* Player Header */}
+              <div className="flex items-center justify-between gap-3 pb-3 border-b border-neutral-800">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-neutral-950 border border-neutral-800 flex items-center justify-center text-xl shrink-0">
+                    {player.avatar}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-outfit font-black text-sm text-white truncate">
+                        {player.nickname}
+                      </span>
+                      {isMe && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold uppercase">
+                          Tú
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-neutral-400">
+                      Total acumulado: {player.score} pts
+                    </span>
+                  </div>
                 </div>
 
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-neutral-950 border border-neutral-800 text-neutral-400 flex items-center gap-1">
-                  {cat.validationType === 'subjective' || room.settings.gameMode !== 'classic' ? (
-                    <>
-                      <Users className="w-3 h-3 text-amber-400" /> Votación Sala
-                    </>
-                  ) : (
-                    <>
-                      <BookCheck className="w-3 h-3 text-emerald-400" /> Diccionario RAM
-                    </>
-                  )}
-                </span>
+                <div className="text-right shrink-0">
+                  <div className="text-base font-black font-outfit text-amber-400">
+                    +{roundSum} pts
+                  </div>
+                  <span className="text-[10px] text-neutral-400 font-medium">
+                    Esta ronda
+                  </span>
+                </div>
               </div>
 
-              {/* Player Answers */}
-              <div className="space-y-2">
-                {players.map((player) => {
-                  const answer = (player.currentRoundAnswers?.[cat.id] || '').trim();
-                  const scoreInfo = player.roundScoreDetails?.[cat.id] || { points: 0, status: 'invalid' };
-                  const currentPts = scoreInfo.points;
+              {/* Answers Grid */}
+              <div className="pt-3 space-y-2">
+                {categories.map((cat) => {
+                  const answer = player.currentRoundAnswers?.[cat.id] || '';
+                  const scoreDetail = player.roundScoreDetails?.[cat.id] || {
+                    points: 0,
+                    status: 'invalid',
+                    verified: false,
+                    notes: '',
+                  };
+
+                  const isNonEmpty = Boolean(answer && answer.trim());
+                  const pts = scoreDetail.points || 0;
                   const voteKey = `${player.id}_${cat.id}`;
                   const voteEntry = peerVotes[voteKey] || { upvotes: [], downvotes: [] };
-                  const hasMyUp = voteEntry.upvotes.includes(currentPlayerId);
-                  const hasMyDown = voteEntry.downvotes.includes(currentPlayerId);
-                  const isMyAnswer = player.id === currentPlayerId;
 
                   return (
                     <div
-                      key={player.id}
-                      className={`p-2.5 rounded-xl bg-neutral-950 border transition ${
-                        currentPts > 0
-                          ? 'border-neutral-800'
-                          : 'border-neutral-800/80 opacity-90'
-                      }`}
+                      key={cat.id}
+                      className="p-2.5 rounded-2xl bg-neutral-950/80 border border-neutral-800/80 flex flex-col gap-1.5"
                     >
-                      <div className="flex items-center justify-between text-xs mb-1.5">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span>{player.avatar}</span>
-                          <span className="font-bold text-neutral-200 truncate font-outfit">
-                            {player.nickname} {isMyAnswer && '(Tú)'}
-                          </span>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 text-xs text-neutral-400 min-w-0">
+                          <span>{cat.icon}</span>
+                          <span className="font-semibold truncate">{cat.name}:</span>
                         </div>
 
-                        {/* Points Tag */}
-                        <span
-                          className={`text-[11px] font-black font-outfit px-2 py-0.5 rounded-lg border ${
-                            currentPts === 100
-                              ? 'bg-neutral-900 text-emerald-400 border-emerald-500/30'
-                              : currentPts === 50
-                              ? 'bg-neutral-900 text-amber-400 border-amber-500/30'
-                              : 'bg-neutral-900 text-neutral-500 border-neutral-800'
-                          }`}
-                        >
-                          +{currentPts} pts
-                        </span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span
+                            className={`text-xs font-black font-outfit px-2 py-0.5 rounded-lg ${
+                              pts === 100
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                : pts === 50
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                : pts > 0
+                                ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                : 'bg-neutral-900 text-neutral-500 border border-neutral-800'
+                            }`}
+                          >
+                            {pts} pts
+                          </span>
+                        </div>
                       </div>
 
-                      {/* Word Display */}
-                      <div className="bg-neutral-900 px-3 py-1.5 rounded-lg text-xs font-bold uppercase font-outfit text-white tracking-wide mb-2 flex items-center justify-between">
-                        <span>{answer || <span className="text-neutral-500 italic font-normal">(Vacío)</span>}</span>
-                        {scoreInfo.notes && (
-                          <span className="text-[9px] text-neutral-400 font-normal truncate max-w-[160px]">
-                            {scoreInfo.notes}
+                      {/* Word text */}
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className={`text-xs font-bold truncate ${
+                            isNonEmpty ? 'text-white' : 'text-neutral-600 italic'
+                          }`}
+                        >
+                          {isNonEmpty ? answer : '— Sin respuesta —'}
+                        </span>
+                        {scoreDetail.notes && (
+                          <span className="text-[10px] text-neutral-400 truncate max-w-[50%] text-right">
+                            {scoreDetail.notes}
                           </span>
                         )}
                       </div>
-
-                      {/* Voting Controls */}
-                      {answer ? (
-                        <div className="flex items-center justify-between gap-2 pt-1 border-t border-neutral-900">
-                          <span className="text-[10px] text-neutral-400 font-medium">
-                            {voteEntry.upvotes.length} 👍 • {voteEntry.downvotes.length} 👎
-                          </span>
-
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              disabled={isMyAnswer}
-                              onClick={() => handleVote(player.id, cat.id, 'up')}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition ${
-                                hasMyUp
-                                  ? 'bg-emerald-500 text-neutral-950 shadow-sm'
-                                  : 'bg-neutral-900 text-neutral-300 hover:text-emerald-400 border border-neutral-800'
-                              } ${isMyAnswer ? 'opacity-40 cursor-not-allowed' : 'active:scale-95'}`}
-                              title={isMyAnswer ? 'No puedes votar tu propia respuesta' : 'Votar Aceptar'}
-                            >
-                              <ThumbsUp className="w-3 h-3" />
-                              <span>Aceptar</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={isMyAnswer}
-                              onClick={() => handleVote(player.id, cat.id, 'down')}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition ${
-                                hasMyDown
-                                  ? 'bg-rose-600 text-white shadow-sm'
-                                  : 'bg-neutral-900 text-neutral-300 hover:text-rose-400 border border-neutral-800'
-                              } ${isMyAnswer ? 'opacity-40 cursor-not-allowed' : 'active:scale-95'}`}
-                              title={isMyAnswer ? 'No puedes votar tu propia respuesta' : 'Votar Rechazar'}
-                            >
-                              <ThumbsDown className="w-3 h-3" />
-                              <span>Rechazar</span>
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
                     </div>
                   );
                 })}
@@ -425,23 +402,6 @@ export const ReviewScreen: React.FC<Props> = ({
       {/* Quick Shouts Bar */}
       <div className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-2">
         <QuickShoutBar onSendShout={onSendShout} />
-      </div>
-
-      {/* Sticky Bottom Host Approval Button */}
-      <div className="fixed bottom-3 left-4 right-4 max-w-md mx-auto z-40">
-        {isHost ? (
-          <button
-            onClick={onApproveReviews}
-            className="w-full py-3.5 px-4 rounded-2xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-black font-outfit text-sm uppercase tracking-wider transition active:scale-[0.98] shadow-2xl flex items-center justify-center gap-2"
-          >
-            <ShieldCheck className="w-4 h-4" />
-            <span>Aprobar Puntuaciones y Continuar</span>
-          </button>
-        ) : (
-          <div className="py-3 px-4 rounded-2xl bg-neutral-900 border border-neutral-800 text-amber-400 text-xs font-semibold text-center">
-            Vota con Aceptar 👍 o Rechazar 👎. El anfitrión cerrará la ronda.
-          </div>
-        )}
       </div>
     </div>
   );

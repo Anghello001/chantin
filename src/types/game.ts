@@ -90,6 +90,8 @@ export interface RoomData {
   peerVotes: Record<string, PeerVoteEntry>; // key `${targetPlayerId}_${catId}`
   timerRemaining: number;
   timerTotal: number;
+  reviewTimerRemaining?: number;
+  reviewTimerTotal?: number;
   freezeCountdownRemaining?: number;
   stoppedByPlayer?: { id: string; nickname: string; avatar: string };
   roundHistory: RoundHistoryItem[];
