@@ -1,0 +1,6 @@
+{
+  "name": "Chantinchantón Multiplayer - El Juego Ecuatoriano de Stop & Tutti Frutti",
+  "description": "Juego multijugador en tiempo real de Chantinchantón (Stop / Basta / Tutti Frutti) con salas privadas, modo clásico, modo locura, objetos IRL, puntuación automática y votación en vivo.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

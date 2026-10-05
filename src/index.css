@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+@layer base {
+  html, body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: #0a0a0c;
+    color: #f3f4f6;
+    touch-action: manipulation;
+    -webkit-text-size-adjust: 100%;
+    -webkit-user-select: none;
+    user-select: none;
+    overscroll-behavior-y: none;
+  }
+
+  input, textarea {
+    -webkit-user-select: auto;
+    user-select: auto;
+    font-size: 16px !important; /* Prevents auto-zoom on iOS Safari when focusing input */
+  }
+
+  .font-outfit {
+    font-family: 'Outfit', system-ui, sans-serif;
+  }
+}
+
+/* Custom minimal scrollbar */
+::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(10, 10, 12, 0.8);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(38, 38, 45, 0.8);
+  border-radius: 9999px;
+}
