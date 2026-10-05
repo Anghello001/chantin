@@ -166,7 +166,7 @@ export const WaitingRoomScreen: React.FC<Props> = ({
                 Cambiar Modo:
               </span>
               <div className="grid grid-cols-2 gap-1.5">
-                {(['classic', 'crazy', 'irl_objects', 'ecuador'] as GameMode[]).map((m) => (
+                {(['classic', 'pop_culture', 'crazy', 'irl_objects'] as GameMode[]).map((m) => (
                   <button
                     key={m}
                     type="button"

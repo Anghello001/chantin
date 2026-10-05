@@ -27,8 +27,9 @@ interface Props {
 }
 
 const RANDOM_NICKNAMES = [
-  'ElPanaGuayaco', 'ChullaQuiteño', 'LlamaVeloz', 'EncebolladoFan',
-  'ReyDelChantin', 'DonChiripa', 'ChambaMaster', 'PanaPro'
+  'CapitanStop', 'MasterBasta', 'VelozPalabras', 'TuttiPro',
+  'MenteRapida', 'LexicoFlash', 'ReyDelStop', 'CometaAlfa',
+  'AstroLetras', 'NovaGenio', 'TurboLingo', 'SuperCampeon'
 ];
 
 export const LobbyScreen: React.FC<Props> = ({
@@ -75,7 +76,7 @@ export const LobbyScreen: React.FC<Props> = ({
       roundDuration,
       votingDuration,
       totalRounds,
-      categories: ALL_PRESET_MODES[selectedMode].categories,
+      categories: (ALL_PRESET_MODES[selectedMode] || ALL_PRESET_MODES.classic).categories,
     });
   };
 
@@ -112,7 +113,7 @@ export const LobbyScreen: React.FC<Props> = ({
           CHANTIN<span className="text-amber-400">CHANTÓN</span>
         </h1>
         <p className="text-xs text-neutral-400 mt-0.5">
-          El clásico Stop / Basta ecuatoriano multijugador
+          El juego online de Stop, Tutti Frutti y Basta multijugador
         </p>
       </div>
 
@@ -231,12 +232,12 @@ export const LobbyScreen: React.FC<Props> = ({
                 Modo de Juego
               </span>
               <span className="text-[10px] text-amber-400 font-semibold">
-                {ALL_PRESET_MODES[selectedMode].categories.length} categorías
+                {(ALL_PRESET_MODES[selectedMode] || ALL_PRESET_MODES.classic).categories.length} categorías
               </span>
             </div>
 
-            {(['classic', 'ecuador', 'crazy', 'irl_objects'] as GameMode[]).map((m) => {
-              const info = ALL_PRESET_MODES[m];
+            {(['classic', 'pop_culture', 'crazy', 'irl_objects'] as GameMode[]).map((m) => {
+              const info = ALL_PRESET_MODES[m] || ALL_PRESET_MODES.classic;
               const isSelected = selectedMode === m;
 
               return (

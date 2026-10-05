@@ -1,4 +1,4 @@
-export type GameMode = 'classic' | 'crazy' | 'irl_objects' | 'ecuador' | 'custom';
+export type GameMode = 'classic' | 'pop_culture' | 'crazy' | 'irl_objects' | 'custom';
 
 export type CategoryValidationType = 'dictionary' | 'subjective';
 
@@ -8,7 +8,7 @@ export interface Category {
   icon: string;
   placeholder: string;
   description?: string;
-  ecuadorExample?: string;
+  example?: string;
   validationType?: CategoryValidationType;
 }
 

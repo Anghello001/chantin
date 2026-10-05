@@ -1,5 +1,5 @@
 import React from 'react';
-import { ECUADOR_QUICK_SHOUTS } from '../constants/gameCategories';
+import { GAME_QUICK_SHOUTS } from '../constants/gameCategories';
 import { Sparkles } from 'lucide-react';
 
 interface Props {
@@ -12,9 +12,9 @@ export const QuickShoutBar: React.FC<Props> = ({ onSendShout, disabled }) => {
     <div className="flex items-center gap-1.5 overflow-x-auto py-1 px-1 scrollbar-none">
       <div className="flex items-center gap-1 text-[10px] font-bold text-neutral-400 uppercase tracking-wider shrink-0 mr-0.5">
         <Sparkles className="w-3 h-3 text-amber-400" />
-        <span>Gritos:</span>
+        <span>Reacciones:</span>
       </div>
-      {ECUADOR_QUICK_SHOUTS.map((shout, idx) => (
+      {GAME_QUICK_SHOUTS.map((shout, idx) => (
         <button
           key={idx}
           disabled={disabled}
